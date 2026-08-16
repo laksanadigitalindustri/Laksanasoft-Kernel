@@ -1,11 +1,11 @@
-name: Build NetHunter + Docker Kernel (beyond2lte)
+name: Build Pure Stock LineageOS Kernel (beyond2lte)
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    name: Compile Official NetHunter Kernel
+    name: Compile Pure Stock Kernel
     runs-on: ubuntu-latest
     steps:
       - name: 🛠️ Setup Build Environment
@@ -17,67 +17,40 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
 
-      - name: 📥 Clone Official NetHunter Kernel Source (beyond2lte-los LineageOS 23.2)
+      - name: 📥 Clone Kernel Source (Linux4 Exynos9820)
         run: |
-          git clone --recurse-submodules https://github.com/v0lk3n/nethunter_kernel_samsung_exynos9820.git -b nethunter-lineage-23.2 kernel
+          git clone --depth=1 https://github.com/Linux4/android_kernel_samsung_exynos9820.git kernel
 
-      - name: ⚙️ Configure Kernel (NetHunter & Docker)
+      - name: ⚙️ Configure Pure Stock Kernel
         run: |
           cd kernel
           export ARCH=arm64
           export CLANG_PATH="$(pwd)/../clang/bin"
           
-          # Custom Identitas Kernel
-          export KBUILD_BUILD_USER="Laksanasoft"
-          export KBUILD_BUILD_HOST="PT-Laksana-Digital-Industri"
-          
           DEFCONFIG=$(ls arch/arm64/configs/ | grep beyond2lte | head -n 1)
           if [ -z "$DEFCONFIG" ]; then DEFCONFIG="exynos9820-beyond2lte_defconfig"; fi
           make O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- $DEFCONFIG
-          
-          echo "[*] Menyuntikkan identitas perusahaan..."
-          ./scripts/config --file out/.config --set-str LOCALVERSION "-Laksanasoft-Enterprise"
-          
-          echo "[*] Menyuntikkan fitur Docker dan NetHunter ke konfigurasi..."
-          ./scripts/config --file out/.config -e CGROUPS -e NAMESPACES -e OVERLAY_FS -e VETH -e BRIDGE -e IP_NF_NAT -e NETFILTER_XT_MATCH_ADDRTYPE
-          ./scripts/config --file out/.config -e MAC80211 -e CFG80211 -e USB_CONFIGFS_F_HID -e BT_HCIUART
-          
-          make O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- olddefconfig
 
-      - name: 🔨 Compile Kernel & DTB
+      - name: 🔨 Compile Pure Kernel & DTB
         run: |
           cd kernel
           export CLANG_PATH="$(pwd)/../clang/bin"
-          export KBUILD_BUILD_USER="Laksanasoft"
-          export KBUILD_BUILD_HOST="PT-Laksana-Digital-Industri"
-          make -j$(nproc --all) O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- KCFLAGS="-Wno-error" Image.gz dtbs || make -j$(nproc --all) O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- KCFLAGS="-Wno-error" Image
+          make -j$(nproc --all) O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- KCFLAGS="-Wno-error" Image.gz dtbs
           
-          if [ -d "out/arch/arm64/boot/dts/exynos" ]; then
-            cat out/arch/arm64/boot/dts/exynos/*.dtb > out/arch/arm64/boot/dtb || true
-          fi
-          if [ -f "out/arch/arm64/boot/Image.gz" ] && [ -f "out/arch/arm64/boot/dtb" ]; then
-            cat out/arch/arm64/boot/Image.gz out/arch/arm64/boot/dtb > out/arch/arm64/boot/Image.gz-dtb
-          fi
+          cat out/arch/arm64/boot/dts/exynos/*.dtb > out/arch/arm64/boot/dtb
+          cat out/arch/arm64/boot/Image.gz out/arch/arm64/boot/dtb > out/arch/arm64/boot/Image.gz-dtb
 
-      - name: 📦 Package with AnyKernel3
+      - name: 📦 Package Pure Kernel with AnyKernel3
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
-          if [ -f "kernel/out/arch/arm64/boot/Image.gz-dtb" ]; then
-            cp kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
-          elif [ -f "kernel/out/arch/arm64/boot/Image.gz" ]; then
-            cp kernel/out/arch/arm64/boot/Image.gz AnyKernel3/
-          else
-            cp kernel/out/arch/arm64/boot/Image AnyKernel3/
-          fi
-          if [ -f "kernel/out/arch/arm64/boot/dtb" ]; then
-            cp kernel/out/arch/arm64/boot/dtb AnyKernel3/
-          fi
+          cp kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
+          cp kernel/out/arch/arm64/boot/dtb AnyKernel3/
           cd AnyKernel3
           sed -i 's/device.name1=maguro/device.name1=beyond2lte/' anykernel.sh
-          zip -r9 ../Laksanasoft-NetHunter-Official-beyond2lte.zip *
+          zip -r9 ../Pure-Stock-LineageOS-Kernel-beyond2lte.zip *
 
       - name: 🚀 Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Laksanasoft-NetHunter-Official-beyond2lte
-          path: Laksanasoft-NetHunter-Official-beyond2lte.zip
+          name: Pure-Stock-LineageOS-Kernel-beyond2lte
+          path: Pure-Stock-LineageOS-Kernel-beyond2lte.zip
