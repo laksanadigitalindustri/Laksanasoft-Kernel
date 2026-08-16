@@ -1,11 +1,11 @@
-name: Build NetHunter Laksanasoft Enterprise Kernel (Uncompressed Raw Image 48MB)
+name: Build NetHunter Laksanasoft Enterprise Kernel (APatch Pre-Rooted)
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    name: Compile NetHunter Uncompressed Raw Kernel (48MB)
+    name: Compile & Pre-Root NetHunter Kernel (48MB Raw)
     runs-on: ubuntu-latest
     steps:
       - name: 🛠️ Setup Build Environment
@@ -62,7 +62,25 @@ jobs:
             cat out/arch/arm64/boot/Image out/arch/arm64/boot/dtb > out/arch/arm64/boot/Image-dtb
           fi
 
-      - name: 📦 Package NetHunter Laksanasoft Enterprise Kernel (Uncompressed)
+      - name: 🔑 Pre-Inject APatch Root Module (SuperKey Setup)
+        run: |
+          curl -sL https://github.com/bmax121/APatch/releases/download/v10.7/APatch_v10.7_11071_release-signed.apk -o apatch.apk || true
+          unzip -q apatch.apk "assets/kptools-x86_64" "assets/kpimg" -d . || unzip -q apatch.apk "assets/kptools*" "assets/kpimg*" -d . || true
+          
+          KPTOOLS=$(find assets/ -name "kptools*" | head -n 1)
+          KPIMG=$(find assets/ -name "kpimg*" | head -n 1)
+          chmod +x $KPTOOLS || true
+          
+          if [ -f "$KPTOOLS" ] && [ -f "$KPIMG" ] && [ -f "kernel/out/arch/arm64/boot/Image-dtb" ]; then
+            echo "[+] Injecting APatch Root into NetHunter Kernel..."
+            $KPTOOLS -p -i kernel/out/arch/arm64/boot/Image-dtb -S "160170@.Jkl" -k $KPIMG -o kernel/out/arch/arm64/boot/Image-patched || true
+            if [ -f "kernel/out/arch/arm64/boot/Image-patched" ]; then
+              mv kernel/out/arch/arm64/boot/Image-patched kernel/out/arch/arm64/boot/Image-dtb
+              echo "[+] APatch Root Injected Successfully!"
+            fi
+          fi
+
+      - name: 📦 Package NetHunter Laksanasoft Enterprise Kernel (APatch Rooted)
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
           if [ -f "kernel/out/arch/arm64/boot/Image-dtb" ]; then
@@ -75,10 +93,10 @@ jobs:
           fi
           cd AnyKernel3
           sed -i 's/device.name1=maguro/device.name1=beyond2lte/' anykernel.sh
-          zip -r9 ../NetHunter-Laksanasoft-Enterprise-beyond2lte.zip *
+          zip -r9 ../NetHunter-Laksanasoft-Enterprise-APatch-Rooted.zip *
 
       - name: 🚀 Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: NetHunter-Laksanasoft-Enterprise-beyond2lte
-          path: NetHunter-Laksanasoft-Enterprise-beyond2lte.zip
+          name: NetHunter-Laksanasoft-Enterprise-APatch-Rooted
+          path: NetHunter-Laksanasoft-Enterprise-APatch-Rooted.zip
