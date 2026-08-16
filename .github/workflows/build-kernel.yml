@@ -6,12 +6,16 @@ on:
 jobs:
   build:
     name: Compile Custom Kernel
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - name: 🛠️ Setup Build Environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential curl flex git gnupg gperf liblz4-tool libncurses5-dev libssl-dev lzop rsync zip python3 crossbuild-essential-arm64 crossbuild-essential-armhf
+          sudo apt-get install -y bc bison build-essential curl flex git gnupg gperf liblz4-tool libncurses5-dev libssl-dev lzop rsync zip python3
+
+      - name: 📥 Clone Toolchain (Proton Clang)
+        run: |
+          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
 
       - name: 📥 Clone Kernel Source (Linux4 / Exynos9820)
         run: |
@@ -21,42 +25,37 @@ jobs:
         run: |
           cd kernel
           export ARCH=arm64
+          export PATH="$(pwd)/../clang/bin:$PATH"
           
           # Custom Identitas Kernel
           export KBUILD_BUILD_USER="Laksanasoft"
           export KBUILD_BUILD_HOST="PT-Laksana-Digital-Industri"
           
-          # Mencari nama defconfig yang tepat untuk S10+
           DEFCONFIG=$(ls arch/arm64/configs/ | grep beyond2lte | head -n 1)
-          echo "Memakai defconfig: $DEFCONFIG"
-          make O=out $DEFCONFIG
+          make O=out ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- $DEFCONFIG
           
           echo "[*] Menyuntikkan identitas perusahaan..."
           ./scripts/config --file out/.config --set-str LOCALVERSION "-Laksanasoft-Enterprise"
           
           echo "[*] Menyuntikkan fitur Docker dan NetHunter ke konfigurasi..."
-          # Docker Requirements
           ./scripts/config --file out/.config -e CGROUPS -e NAMESPACES -e OVERLAY_FS -e VETH -e BRIDGE -e IP_NF_NAT -e NETFILTER_XT_MATCH_ADDRTYPE
-          
-          # NetHunter Requirements (WiFi Injection, BadUSB)
           ./scripts/config --file out/.config -e MAC80211 -e CFG80211 -e USB_CONFIGFS_F_HID -e BT_HCIUART
           
-          make O=out olddefconfig
+          make O=out ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- olddefconfig
 
       - name: 🔨 Compile Kernel
         run: |
           cd kernel
+          export PATH="$(pwd)/../clang/bin:$PATH"
           export KBUILD_BUILD_USER="Laksanasoft"
           export KBUILD_BUILD_HOST="PT-Laksana-Digital-Industri"
-          make -j$(nproc --all) O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabihf- KCFLAGS="-Wno-error" Image
+          make -j$(nproc --all) O=out ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- Image
 
       - name: 📦 Package with AnyKernel3
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
           cp kernel/out/arch/arm64/boot/Image AnyKernel3/
           cd AnyKernel3
-          
-          # Modifikasi AnyKernel3 agar mendukung S10+
           sed -i 's/device.name1=maguro/device.name1=beyond2lte/' anykernel.sh
           zip -r9 ../Laksanasoft-NetHunter-Kernel-beyond2lte.zip *
 
