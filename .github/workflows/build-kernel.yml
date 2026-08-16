@@ -1,11 +1,11 @@
-name: Build NetHunter Enterprise Kernel (Bluetooth VHCI, CAN-Bus & Docker Engine)
+name: Build NetHunter Enterprise Kernel (All Features: MassStorage, VHCI, Docker, CAN)
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    name: Compile NetHunter Kernel (Bluetooth VHCI + CAN-Bus + Docker Bridge + APatch Ready)
+    name: Compile Complete NetHunter Kernel (MassStorage + VHCI + Docker + CAN + APatch)
     runs-on: ubuntu-latest
     steps:
       - name: 🛠️ Setup Build Environment
@@ -21,7 +21,7 @@ jobs:
         run: |
           git clone --recurse-submodules https://github.com/v0lk3n/nethunter_kernel_samsung_exynos9820.git -b nethunter-lineage-23.2 kernel
 
-      - name: ⚙️ Configure & Tune Defconfig (Bluetooth VHCI + CAN-Bus + Docker + Drivers)
+      - name: ⚙️ Configure & Tune Defconfig (MassStorage + VHCI + Docker + CAN + Drivers)
         run: |
           cd kernel
           export ARCH=arm64
@@ -39,6 +39,11 @@ jobs:
           
           # Built-in Vendor Drivers (prevent vermagic mismatch bootloop)
           ./scripts/config --file out/.config -e MALI_B_KBASE -e BCMDHD
+          
+          # USB ConfigFS Gadgets (HID BadUSB + USB Mass Storage Drive Mount)
+          ./scripts/config --file out/.config \
+            -e USB_CONFIGFS -e USB_CONFIGFS_F_HID -e USB_G_HID \
+            -e USB_CONFIGFS_F_FS -e USB_CONFIGFS_MASS_STORAGE -e USB_F_MASS_STORAGE
           
           # Bluetooth VHCI, HCI USB, UART, RFCOMM, BNEP & HIDP
           ./scripts/config --file out/.config \
@@ -58,7 +63,6 @@ jobs:
             -e CGROUPS -e CGROUP_CPUACCT -e CGROUP_DEVICE -e CGROUP_FREEZER -e CGROUP_SCHED -e CPUSETS -e MEMCG \
             -e BRIDGE -e VETH -e MACVLAN -e TAP -e TUN -e OVERLAY_FS \
             -e NETFILTER_XT_MARK -e IP_NF_FILTER -e IP_NF_TARGET_MASQUERADE \
-            -e USB_CONFIGFS_F_HID -e USB_G_HID \
             -e ATH9K_HTC -e RTL8187 -e RTL8812AU -e RTL88XXAU -e RTL88X2BU -e CFG80211 \
             --set-str LOCALVERSION "-Laksanasoft-NetHunter-Enterprise-v1.0"
           
@@ -77,7 +81,7 @@ jobs:
             cat out/arch/arm64/boot/Image out/arch/arm64/boot/dtb > out/arch/arm64/boot/Image-dtb
           fi
 
-      - name: 📦 Package NetHunter Enterprise Kernel (Bluetooth VHCI + CAN-Bus + Docker Bridge)
+      - name: 📦 Package NetHunter Enterprise Kernel (All Features Included)
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
           if [ -f "kernel/out/arch/arm64/boot/Image-dtb" ]; then
@@ -90,10 +94,10 @@ jobs:
           fi
           cd AnyKernel3
           sed -i 's/device.name1=maguro/device.name1=beyond2lte/' anykernel.sh
-          zip -r9 ../NetHunter-Enterprise-VHCI-CANBus-Docker-APatch-Ready.zip *
+          zip -r9 ../NetHunter-Enterprise-ALL-FEATURES.zip *
 
       - name: 🚀 Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: NetHunter-Enterprise-VHCI-CANBus-Docker-APatch-Ready
-          path: NetHunter-Enterprise-VHCI-CANBus-Docker-APatch-Ready.zip
+          name: NetHunter-Enterprise-ALL-FEATURES
+          path: NetHunter-Enterprise-ALL-FEATURES.zip
