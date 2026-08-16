@@ -1,11 +1,11 @@
-name: Build Pure Stock LineageOS Kernel (beyond2lte)
+name: Build Pure Official NetHunter Kernel (v0lk3n)
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    name: Compile Pure Stock Kernel
+    name: Compile Pure Untouched NetHunter Kernel
     runs-on: ubuntu-latest
     steps:
       - name: 🛠️ Setup Build Environment
@@ -17,11 +17,11 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
 
-      - name: 📥 Clone Kernel Source (Linux4 Exynos9820)
+      - name: 📥 Clone Official NetHunter Source (v0lk3n nethunter-lineage-23.2)
         run: |
-          git clone --depth=1 https://github.com/Linux4/android_kernel_samsung_exynos9820.git kernel
+          git clone --recurse-submodules https://github.com/v0lk3n/nethunter_kernel_samsung_exynos9820.git -b nethunter-lineage-23.2 kernel
 
-      - name: ⚙️ Configure Pure Stock Kernel
+      - name: ⚙️ Configure Untouched Defconfig
         run: |
           cd kernel
           export ARCH=arm64
@@ -31,26 +31,38 @@ jobs:
           if [ -z "$DEFCONFIG" ]; then DEFCONFIG="exynos9820-beyond2lte_defconfig"; fi
           make O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- $DEFCONFIG
 
-      - name: 🔨 Compile Pure Kernel & DTB
+      - name: 🔨 Compile Pure NetHunter Kernel & DTB
         run: |
           cd kernel
           export CLANG_PATH="$(pwd)/../clang/bin"
-          make -j$(nproc --all) O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- KCFLAGS="-Wno-error" Image.gz dtbs
+          make -j$(nproc --all) O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- KCFLAGS="-Wno-error" Image.gz dtbs || make -j$(nproc --all) O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- KCFLAGS="-Wno-error" Image
           
-          cat out/arch/arm64/boot/dts/exynos/*.dtb > out/arch/arm64/boot/dtb
-          cat out/arch/arm64/boot/Image.gz out/arch/arm64/boot/dtb > out/arch/arm64/boot/Image.gz-dtb
+          if [ -d "out/arch/arm64/boot/dts/exynos" ]; then
+            cat out/arch/arm64/boot/dts/exynos/*.dtb > out/arch/arm64/boot/dtb || true
+          fi
+          if [ -f "out/arch/arm64/boot/Image.gz" ] && [ -f "out/arch/arm64/boot/dtb" ]; then
+            cat out/arch/arm64/boot/Image.gz out/arch/arm64/boot/dtb > out/arch/arm64/boot/Image.gz-dtb
+          fi
 
-      - name: 📦 Package Pure Kernel with AnyKernel3
+      - name: 📦 Package Pure NetHunter Kernel
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
-          cp kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
-          cp kernel/out/arch/arm64/boot/dtb AnyKernel3/
+          if [ -f "kernel/out/arch/arm64/boot/Image.gz-dtb" ]; then
+            cp kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
+          elif [ -f "kernel/out/arch/arm64/boot/Image.gz" ]; then
+            cp kernel/out/arch/arm64/boot/Image.gz AnyKernel3/
+          else
+            cp kernel/out/arch/arm64/boot/Image AnyKernel3/
+          fi
+          if [ -f "kernel/out/arch/arm64/boot/dtb" ]; then
+            cp kernel/out/arch/arm64/boot/dtb AnyKernel3/
+          fi
           cd AnyKernel3
           sed -i 's/device.name1=maguro/device.name1=beyond2lte/' anykernel.sh
-          zip -r9 ../Pure-Stock-LineageOS-Kernel-beyond2lte.zip *
+          zip -r9 ../Pure-Official-v0lk3n-NetHunter-beyond2lte.zip *
 
       - name: 🚀 Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Pure-Stock-LineageOS-Kernel-beyond2lte
-          path: Pure-Stock-LineageOS-Kernel-beyond2lte.zip
+          name: Pure-Official-v0lk3n-NetHunter-beyond2lte
+          path: Pure-Official-v0lk3n-NetHunter-beyond2lte.zip
