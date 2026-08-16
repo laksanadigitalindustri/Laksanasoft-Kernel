@@ -11,7 +11,7 @@ jobs:
       - name: 🛠️ Setup Build Environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential curl flex git gnupg gperf liblz4-tool libncurses5-dev libssl-dev lzop rsync zip python3
+          sudo apt-get install -y bc bison build-essential curl flex git gnupg gperf liblz4-tool libncurses5-dev libssl-dev lzop rsync zip python3 gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
       - name: 📥 Clone Toolchain (Proton Clang)
         run: |
@@ -25,14 +25,14 @@ jobs:
         run: |
           cd kernel
           export ARCH=arm64
-          export CLANG_PATH="$(pwd)/../clang/bin/clang"
+          export CLANG_PATH="$(pwd)/../clang/bin"
           
           # Custom Identitas Kernel
           export KBUILD_BUILD_USER="Laksanasoft"
           export KBUILD_BUILD_HOST="PT-Laksana-Digital-Industri"
           
           DEFCONFIG=$(ls arch/arm64/configs/ | grep beyond2lte | head -n 1)
-          make O=out ARCH=arm64 CC=$CLANG_PATH CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- $DEFCONFIG
+          make O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- $DEFCONFIG
           
           echo "[*] Menyuntikkan identitas perusahaan..."
           ./scripts/config --file out/.config --set-str LOCALVERSION "-Laksanasoft-Enterprise"
@@ -41,15 +41,15 @@ jobs:
           ./scripts/config --file out/.config -e CGROUPS -e NAMESPACES -e OVERLAY_FS -e VETH -e BRIDGE -e IP_NF_NAT -e NETFILTER_XT_MATCH_ADDRTYPE
           ./scripts/config --file out/.config -e MAC80211 -e CFG80211 -e USB_CONFIGFS_F_HID -e BT_HCIUART
           
-          make O=out ARCH=arm64 CC=$CLANG_PATH CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- olddefconfig
+          make O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- olddefconfig
 
       - name: 🔨 Compile Kernel
         run: |
           cd kernel
-          export CLANG_PATH="$(pwd)/../clang/bin/clang"
+          export CLANG_PATH="$(pwd)/../clang/bin"
           export KBUILD_BUILD_USER="Laksanasoft"
           export KBUILD_BUILD_HOST="PT-Laksana-Digital-Industri"
-          make -j$(nproc --all) O=out ARCH=arm64 CC=$CLANG_PATH CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="-Wno-error" Image
+          make -j$(nproc --all) O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- KCFLAGS="-Wno-error" Image
 
       - name: 📦 Package with AnyKernel3
         run: |
