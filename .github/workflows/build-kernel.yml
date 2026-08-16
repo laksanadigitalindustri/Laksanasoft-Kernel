@@ -1,11 +1,11 @@
-name: Build Pure Official NetHunter Kernel (v0lk3n)
+name: Build NetHunter Laksanasoft Enterprise Kernel (built-in drivers)
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    name: Compile Pure Untouched NetHunter Kernel
+    name: Compile NetHunter Laksanasoft Enterprise Kernel
     runs-on: ubuntu-latest
     steps:
       - name: 🛠️ Setup Build Environment
@@ -21,17 +21,35 @@ jobs:
         run: |
           git clone --recurse-submodules https://github.com/v0lk3n/nethunter_kernel_samsung_exynos9820.git -b nethunter-lineage-23.2 kernel
 
-      - name: ⚙️ Configure Untouched Defconfig
+      - name: ⚙️ Configure & Tune Defconfig (Built-in Drivers & NetHunter)
         run: |
           cd kernel
           export ARCH=arm64
           export CLANG_PATH="$(pwd)/../clang/bin"
           
-          DEFCONFIG=$(ls arch/arm64/configs/ | grep beyond2lte | head -n 1)
-          if [ -z "$DEFCONFIG" ]; then DEFCONFIG="exynos9820-beyond2lte_defconfig"; fi
+          DEFCONFIG="exynos9820-beyond2lte_defconfig"
+          if [ ! -f "arch/arm64/configs/$DEFCONFIG" ]; then
+            DEFCONFIG=$(ls arch/arm64/configs/ | grep beyond2lte | head -n 1)
+          fi
+          
           make O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- $DEFCONFIG
+          
+          # Built-in Vendor Drivers (to prevent vermagic mismatch bootloop)
+          ./scripts/config --file out/.config -e MALI_B_KBASE -e BCMDHD
+          
+          # NetHunter Wireless, HID BadUSB, Bluetooth & Docker Engine
+          ./scripts/config --file out/.config \
+            -e NAMESPACES -e UTS_NS -e IPC_NS -e USER_NS -e PID_NS -e NET_NS \
+            -e CGROUPS -e CGROUP_CPUACCT -e CGROUP_DEVICE -e CGROUP_FREEZER -e CGROUP_SCHED -e CPUSETS -e MEMCG \
+            -e OVERLAY_FS -e NETFILTER_XT_MARK -e IP_NF_FILTER -e IP_NF_TARGET_MASQUERADE \
+            -e USB_CONFIGFS_F_HID -e USB_G_HID \
+            -e ATH9K_HTC -e RTL8187 -e RTL8812AU -e RTL88XXAU -e RTL88X2BU -e CFG80211 \
+            -e BT_RFCOMM -e BT_HCIBTUSB \
+            --set-str LOCALVERSION "-Laksanasoft-NetHunter-Enterprise-v1.0"
+          
+          make O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- olddefconfig
 
-      - name: 🔨 Compile Pure NetHunter Kernel & DTB
+      - name: 🔨 Compile NetHunter Kernel & DTB
         run: |
           cd kernel
           export CLANG_PATH="$(pwd)/../clang/bin"
@@ -44,7 +62,7 @@ jobs:
             cat out/arch/arm64/boot/Image.gz out/arch/arm64/boot/dtb > out/arch/arm64/boot/Image.gz-dtb
           fi
 
-      - name: 📦 Package Pure NetHunter Kernel
+      - name: 📦 Package NetHunter Laksanasoft Enterprise Kernel
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
           if [ -f "kernel/out/arch/arm64/boot/Image.gz-dtb" ]; then
@@ -59,10 +77,10 @@ jobs:
           fi
           cd AnyKernel3
           sed -i 's/device.name1=maguro/device.name1=beyond2lte/' anykernel.sh
-          zip -r9 ../Pure-Official-v0lk3n-NetHunter-beyond2lte.zip *
+          zip -r9 ../NetHunter-Laksanasoft-Enterprise-beyond2lte.zip *
 
       - name: 🚀 Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Pure-Official-v0lk3n-NetHunter-beyond2lte
-          path: Pure-Official-v0lk3n-NetHunter-beyond2lte.zip
+          name: NetHunter-Laksanasoft-Enterprise-beyond2lte
+          path: NetHunter-Laksanasoft-Enterprise-beyond2lte.zip
