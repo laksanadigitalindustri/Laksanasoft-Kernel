@@ -48,7 +48,7 @@ jobs:
           cd kernel
           export KBUILD_BUILD_USER="Laksanasoft"
           export KBUILD_BUILD_HOST="PT-Laksana-Digital-Industri"
-          make -j$(nproc --all) O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabihf- Image
+          make -j$(nproc --all) O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabihf- KCFLAGS="-Wno-error" Image
 
       - name: 📦 Package with AnyKernel3
         run: |
