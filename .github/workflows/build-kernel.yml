@@ -1,11 +1,11 @@
-name: Build NetHunter Laksanasoft Enterprise Kernel (APatch Pre-Rooted)
+name: Build Clean NetHunter Enterprise Kernel (APatch Ready)
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    name: Compile & Pre-Root NetHunter Kernel (48MB Raw)
+    name: Compile Clean NetHunter Kernel (48MB Raw APatch-Ready)
     runs-on: ubuntu-latest
     steps:
       - name: 🛠️ Setup Build Environment
@@ -21,7 +21,7 @@ jobs:
         run: |
           git clone --recurse-submodules https://github.com/v0lk3n/nethunter_kernel_samsung_exynos9820.git -b nethunter-lineage-23.2 kernel
 
-      - name: ⚙️ Configure & Tune Defconfig (Built-in Drivers & NetHunter)
+      - name: ⚙️ Configure & Tune Defconfig (APatch Ready & Built-in Drivers)
         run: |
           cd kernel
           export ARCH=arm64
@@ -33,6 +33,9 @@ jobs:
           fi
           
           make O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- $DEFCONFIG
+          
+          # Disable CFI to ensure 100% APatch KernelPatch Compatibility (prevent reboot)
+          ./scripts/config --file out/.config -d CFI_CLANG -d CFI_PERMISSIVE -d SHADOW_CALL_STACK
           
           # Built-in Vendor Drivers (prevent vermagic mismatch bootloop)
           ./scripts/config --file out/.config -e MALI_B_KBASE -e BCMDHD
@@ -62,25 +65,7 @@ jobs:
             cat out/arch/arm64/boot/Image out/arch/arm64/boot/dtb > out/arch/arm64/boot/Image-dtb
           fi
 
-      - name: 🔑 Pre-Inject APatch Root Module (SuperKey Setup)
-        run: |
-          curl -sL https://github.com/bmax121/APatch/releases/download/v10.7/APatch_v10.7_11071_release-signed.apk -o apatch.apk || true
-          unzip -q apatch.apk "assets/kptools-x86_64" "assets/kpimg" -d . || unzip -q apatch.apk "assets/kptools*" "assets/kpimg*" -d . || true
-          
-          KPTOOLS=$(find assets/ -name "kptools*" | head -n 1)
-          KPIMG=$(find assets/ -name "kpimg*" | head -n 1)
-          chmod +x $KPTOOLS || true
-          
-          if [ -f "$KPTOOLS" ] && [ -f "$KPIMG" ] && [ -f "kernel/out/arch/arm64/boot/Image-dtb" ]; then
-            echo "[+] Injecting APatch Root into NetHunter Kernel..."
-            $KPTOOLS -p -i kernel/out/arch/arm64/boot/Image-dtb -S "160170@.Jkl" -k $KPIMG -o kernel/out/arch/arm64/boot/Image-patched || true
-            if [ -f "kernel/out/arch/arm64/boot/Image-patched" ]; then
-              mv kernel/out/arch/arm64/boot/Image-patched kernel/out/arch/arm64/boot/Image-dtb
-              echo "[+] APatch Root Injected Successfully!"
-            fi
-          fi
-
-      - name: 📦 Package NetHunter Laksanasoft Enterprise Kernel (APatch Rooted)
+      - name: 📦 Package Clean NetHunter Enterprise Kernel (APatch Ready)
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
           if [ -f "kernel/out/arch/arm64/boot/Image-dtb" ]; then
@@ -93,10 +78,10 @@ jobs:
           fi
           cd AnyKernel3
           sed -i 's/device.name1=maguro/device.name1=beyond2lte/' anykernel.sh
-          zip -r9 ../NetHunter-Laksanasoft-Enterprise-APatch-Rooted.zip *
+          zip -r9 ../Clean-NetHunter-Enterprise-APatch-Ready.zip *
 
       - name: 🚀 Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: NetHunter-Laksanasoft-Enterprise-APatch-Rooted
-          path: NetHunter-Laksanasoft-Enterprise-APatch-Rooted.zip
+          name: Clean-NetHunter-Enterprise-APatch-Ready
+          path: Clean-NetHunter-Enterprise-APatch-Ready.zip
