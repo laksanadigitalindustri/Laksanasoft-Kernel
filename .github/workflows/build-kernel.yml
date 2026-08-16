@@ -1,7 +1,10 @@
-name: Build NetHunter Enterprise Kernel (All Features: MassStorage, VHCI, Docker, CAN)
+name: Build NetHunter Enterprise Kernel
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
   build:
