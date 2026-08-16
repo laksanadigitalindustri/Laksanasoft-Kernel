@@ -1,11 +1,11 @@
-name: Build Clean NetHunter Enterprise Kernel (APatch Ready)
+name: Build NetHunter Enterprise Kernel (Bluetooth VHCI & CAN-Bus Enabled)
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    name: Compile Clean NetHunter Kernel (48MB Raw APatch-Ready)
+    name: Compile NetHunter Kernel (Bluetooth VHCI + CAN-Bus + APatch Ready)
     runs-on: ubuntu-latest
     steps:
       - name: 🛠️ Setup Build Environment
@@ -21,7 +21,7 @@ jobs:
         run: |
           git clone --recurse-submodules https://github.com/v0lk3n/nethunter_kernel_samsung_exynos9820.git -b nethunter-lineage-23.2 kernel
 
-      - name: ⚙️ Configure & Tune Defconfig (APatch Ready & Built-in Drivers)
+      - name: ⚙️ Configure & Tune Defconfig (Bluetooth VHCI + CAN-Bus + Drivers)
         run: |
           cd kernel
           export ARCH=arm64
@@ -40,14 +40,25 @@ jobs:
           # Built-in Vendor Drivers (prevent vermagic mismatch bootloop)
           ./scripts/config --file out/.config -e MALI_B_KBASE -e BCMDHD
           
-          # NetHunter Wireless, HID BadUSB, Bluetooth & Docker Engine
+          # Bluetooth VHCI, HCI USB, UART, RFCOMM, BNEP & HIDP
+          ./scripts/config --file out/.config \
+            -e BT -e BT_RFCOMM -e BT_RFCOMM_TTY -e BT_BNEP -e BT_BNEP_MC_FILTER \
+            -e BT_BNEP_PROTO_FILTER -e BT_HIDP -e BT_HS -e BT_LE \
+            -e BT_HCIVHCI -e BT_HCIBTUSB -e BT_HCIUART -e BT_HCIUART_H4 \
+            -e BT_HCIUART_BCSP -e BT_HCIUART_ATH3K -e BT_HCIUART_LL -e BT_HCIUART_3WIRE
+          
+          # CAN-Bus Automotive Protocol Family (SocketCAN, VCAN, SLCAN)
+          ./scripts/config --file out/.config \
+            -e CAN -e CAN_RAW -e CAN_BCM -e CAN_GW -e CAN_VCAN -e CAN_SLCAN \
+            -e CAN_DEV -e CAN_CALC_BITTIMING
+          
+          # NetHunter Wireless, HID BadUSB & Docker Engine
           ./scripts/config --file out/.config \
             -e NAMESPACES -e UTS_NS -e IPC_NS -e USER_NS -e PID_NS -e NET_NS \
             -e CGROUPS -e CGROUP_CPUACCT -e CGROUP_DEVICE -e CGROUP_FREEZER -e CGROUP_SCHED -e CPUSETS -e MEMCG \
             -e OVERLAY_FS -e NETFILTER_XT_MARK -e IP_NF_FILTER -e IP_NF_TARGET_MASQUERADE \
             -e USB_CONFIGFS_F_HID -e USB_G_HID \
             -e ATH9K_HTC -e RTL8187 -e RTL8812AU -e RTL88XXAU -e RTL88X2BU -e CFG80211 \
-            -e BT_RFCOMM -e BT_HCIBTUSB \
             --set-str LOCALVERSION "-Laksanasoft-NetHunter-Enterprise-v1.0"
           
           make O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- olddefconfig
@@ -65,7 +76,7 @@ jobs:
             cat out/arch/arm64/boot/Image out/arch/arm64/boot/dtb > out/arch/arm64/boot/Image-dtb
           fi
 
-      - name: 📦 Package Clean NetHunter Enterprise Kernel (APatch Ready)
+      - name: 📦 Package NetHunter Enterprise Kernel (Bluetooth VHCI + CAN-Bus)
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
           if [ -f "kernel/out/arch/arm64/boot/Image-dtb" ]; then
@@ -78,10 +89,10 @@ jobs:
           fi
           cd AnyKernel3
           sed -i 's/device.name1=maguro/device.name1=beyond2lte/' anykernel.sh
-          zip -r9 ../Clean-NetHunter-Enterprise-APatch-Ready.zip *
+          zip -r9 ../NetHunter-Enterprise-VHCI-CANBus-APatch-Ready.zip *
 
       - name: 🚀 Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Clean-NetHunter-Enterprise-APatch-Ready
-          path: Clean-NetHunter-Enterprise-APatch-Ready.zip
+          name: NetHunter-Enterprise-VHCI-CANBus-APatch-Ready
+          path: NetHunter-Enterprise-VHCI-CANBus-APatch-Ready.zip
