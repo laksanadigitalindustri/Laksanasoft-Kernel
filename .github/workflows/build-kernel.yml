@@ -1,11 +1,11 @@
-name: Build NetHunter Laksanasoft Enterprise Kernel (built-in drivers)
+name: Build NetHunter Laksanasoft Enterprise Kernel (Uncompressed Raw Image 48MB)
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    name: Compile NetHunter Laksanasoft Enterprise Kernel
+    name: Compile NetHunter Uncompressed Raw Kernel (48MB)
     runs-on: ubuntu-latest
     steps:
       - name: 🛠️ Setup Build Environment
@@ -34,7 +34,7 @@ jobs:
           
           make O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- $DEFCONFIG
           
-          # Built-in Vendor Drivers (to prevent vermagic mismatch bootloop)
+          # Built-in Vendor Drivers (prevent vermagic mismatch bootloop)
           ./scripts/config --file out/.config -e MALI_B_KBASE -e BCMDHD
           
           # NetHunter Wireless, HID BadUSB, Bluetooth & Docker Engine
@@ -49,27 +49,25 @@ jobs:
           
           make O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- olddefconfig
 
-      - name: 🔨 Compile NetHunter Kernel & DTB
+      - name: 🔨 Compile NetHunter Kernel & DTB (Uncompressed Raw ARM64 48MB)
         run: |
           cd kernel
           export CLANG_PATH="$(pwd)/../clang/bin"
-          make -j$(nproc --all) O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- KCFLAGS="-Wno-error" Image.gz dtbs || make -j$(nproc --all) O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- KCFLAGS="-Wno-error" Image
+          make -j$(nproc --all) O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- KCFLAGS="-Wno-error" Image dtbs
           
           if [ -d "out/arch/arm64/boot/dts/exynos" ]; then
             cat out/arch/arm64/boot/dts/exynos/*.dtb > out/arch/arm64/boot/dtb || true
           fi
-          if [ -f "out/arch/arm64/boot/Image.gz" ] && [ -f "out/arch/arm64/boot/dtb" ]; then
-            cat out/arch/arm64/boot/Image.gz out/arch/arm64/boot/dtb > out/arch/arm64/boot/Image.gz-dtb
+          if [ -f "out/arch/arm64/boot/Image" ] && [ -f "out/arch/arm64/boot/dtb" ]; then
+            cat out/arch/arm64/boot/Image out/arch/arm64/boot/dtb > out/arch/arm64/boot/Image-dtb
           fi
 
-      - name: 📦 Package NetHunter Laksanasoft Enterprise Kernel
+      - name: 📦 Package NetHunter Laksanasoft Enterprise Kernel (Uncompressed)
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
-          if [ -f "kernel/out/arch/arm64/boot/Image.gz-dtb" ]; then
-            cp kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
-          elif [ -f "kernel/out/arch/arm64/boot/Image.gz" ]; then
-            cp kernel/out/arch/arm64/boot/Image.gz AnyKernel3/
-          else
+          if [ -f "kernel/out/arch/arm64/boot/Image-dtb" ]; then
+            cp kernel/out/arch/arm64/boot/Image-dtb AnyKernel3/
+          elif [ -f "kernel/out/arch/arm64/boot/Image" ]; then
             cp kernel/out/arch/arm64/boot/Image AnyKernel3/
           fi
           if [ -f "kernel/out/arch/arm64/boot/dtb" ]; then
