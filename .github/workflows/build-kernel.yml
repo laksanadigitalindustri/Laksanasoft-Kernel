@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    name: Compile Complete NetHunter Kernel (Compressed Image.gz-dtb 18MB)
+    name: Compile Complete NetHunter Kernel (Exact beyond2lte DTB + Image.gz)
     runs-on: ubuntu-latest
     steps:
       - name: 🛠️ Setup Build Environment
@@ -24,7 +24,7 @@ jobs:
         run: |
           git clone --recurse-submodules https://github.com/v0lk3n/nethunter_kernel_samsung_exynos9820.git -b nethunter-lineage-23.2 kernel
 
-      - name: ⚙️ Configure & Tune Defconfig (Compressed Kernel + Native Linux + Kexec)
+      - name: ⚙️ Configure & Tune Defconfig (Exact beyond2lte Hardware Config)
         run: |
           cd kernel
           export ARCH=arm64
@@ -77,24 +77,30 @@ jobs:
             -e BRIDGE -e VETH -e MACVLAN -e TAP -e TUN -e OVERLAY_FS \
             -e NETFILTER_XT_MARK -e IP_NF_FILTER -e IP_NF_TARGET_MASQUERADE \
             -e ATH9K_HTC -e RTL8187 -e RTL8812AU -e RTL88XXAU -e RTL88X2BU -e CFG80211 \
-            --set-str LOCALVERSION "-Laksanasoft-NH-v2.2-Compressed"
+            --set-str LOCALVERSION "-Laksanasoft-NH-v2.3-ExactDTB"
           
           make O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- olddefconfig
 
-      - name: 🔨 Compile Compressed Kernel Image.gz & DTB (~18MB Payload)
+      - name: 🔨 Compile Exact beyond2lte DTB & Image.gz (~18MB Payload)
         run: |
           cd kernel
           export CLANG_PATH="$(pwd)/../clang/bin"
           make -j$(nproc --all) O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- KCFLAGS="-Wno-error" Image.gz dtbs
           
-          if [ -d "out/arch/arm64/boot/dts/exynos" ]; then
+          # Extract ONLY the single exact beyond2lte DTB to prevent multi-DTB table corruption
+          EXYNOS_DTB=$(find out/arch/arm64/boot/dts/exynos/ -name "*beyond2lte*.dtb" | head -n 1)
+          if [ -f "$EXYNOS_DTB" ]; then
+            echo "Found exact hardware DTB: $EXYNOS_DTB"
+            cp "$EXYNOS_DTB" out/arch/arm64/boot/dtb
+          else
             cat out/arch/arm64/boot/dts/exynos/*.dtb > out/arch/arm64/boot/dtb || true
           fi
+
           if [ -f "out/arch/arm64/boot/Image.gz" ] && [ -f "out/arch/arm64/boot/dtb" ]; then
             cat out/arch/arm64/boot/Image.gz out/arch/arm64/boot/dtb > out/arch/arm64/boot/Image.gz-dtb
           fi
 
-      - name: 📦 Package Compressed NetHunter Enterprise Kernel (Image.gz-dtb)
+      - name: 📦 Package Exact NetHunter Enterprise Kernel (Image.gz-dtb)
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
           if [ -f "kernel/out/arch/arm64/boot/Image.gz-dtb" ]; then
