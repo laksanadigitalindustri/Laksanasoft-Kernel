@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    name: Compile Complete NetHunter Kernel (Native Linux + Kexec + Docker + MassStorage)
+    name: Compile Complete NetHunter Kernel (Compressed Image.gz-dtb 18MB)
     runs-on: ubuntu-latest
     steps:
       - name: 🛠️ Setup Build Environment
@@ -24,15 +24,14 @@ jobs:
         run: |
           git clone --recurse-submodules https://github.com/v0lk3n/nethunter_kernel_samsung_exynos9820.git -b nethunter-lineage-23.2 kernel
 
-      - name: ⚙️ Configure & Tune Defconfig (Force KEXEC, VT, DEVTMPFS in Kconfig)
+      - name: ⚙️ Configure & Tune Defconfig (Compressed Kernel + Native Linux + Kexec)
         run: |
           cd kernel
           export ARCH=arm64
           export CLANG_PATH="$(pwd)/../clang/bin"
           
-          # Force unlock KEXEC, VT & FRAMEBUFFER_CONSOLE in Kconfig sources directly
+          # Force unlock KEXEC, DEVTMPFS, TMPFS in Kconfig sources
           sed -i 's/bool "kexec system call" if EXPERT/bool "kexec system call"/' arch/arm64/Kconfig || true
-          sed -i 's/depends on TTY/select VT/g' drivers/tty/Kconfig || true
           
           DEFCONFIG="exynos9820-beyond2lte_defconfig"
           if [ ! -f "arch/arm64/configs/$DEFCONFIG" ]; then
@@ -41,16 +40,15 @@ jobs:
           
           make O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- $DEFCONFIG
           
-          # Disable CFI to ensure 100% APatch KernelPatch Compatibility (prevent reboot)
+          # Disable CFI to ensure 100% APatch KernelPatch Compatibility
           ./scripts/config --file out/.config -d CFI_CLANG -d CFI_PERMISSIVE -d SHADOW_CALL_STACK
           
-          # Built-in Vendor Drivers (prevent vermagic mismatch bootloop)
+          # Built-in Vendor Drivers
           ./scripts/config --file out/.config -e MALI_B_KBASE -e BCMDHD
           
-          # NATIVE LINUX BOOTING & KEXEC REQUIREMENTS (FORCE MANDATORY)
+          # NATIVE LINUX BOOTING & KEXEC REQUIREMENTS
           ./scripts/config --file out/.config \
             --enable DEVTMPFS --enable DEVTMPFS_MOUNT \
-            --enable TTY --enable VT --enable VT_CONSOLE --enable HW_CONSOLE --enable FRAMEBUFFER_CONSOLE \
             --enable TMPFS --enable TMPFS_POSIX_ACL --enable TMPFS_XATTR \
             --enable KEXEC --enable KEXEC_CORE --enable KEXEC_FILE \
             --enable BLK_DEV_INITRD --enable BLK_DEV_LOOP --enable BLK_DEV_RAM
@@ -67,7 +65,7 @@ jobs:
             -e BT_HCIVHCI -e BT_HCIBTUSB -e BT_HCIUART -e BT_HCIUART_H4 \
             -e BT_HCIUART_BCSP -e BT_HCIUART_ATH3K -e BT_HCIUART_LL -e BT_HCIUART_3WIRE
           
-          # CAN-Bus Automotive Protocol Family (SocketCAN, VCAN, SLCAN)
+          # CAN-Bus Automotive Protocol Family
           ./scripts/config --file out/.config \
             -e CAN -e CAN_RAW -e CAN_BCM -e CAN_GW -e CAN_VCAN -e CAN_SLCAN \
             -e CAN_DEV -e CAN_CALC_BITTIMING
@@ -79,30 +77,30 @@ jobs:
             -e BRIDGE -e VETH -e MACVLAN -e TAP -e TUN -e OVERLAY_FS \
             -e NETFILTER_XT_MARK -e IP_NF_FILTER -e IP_NF_TARGET_MASQUERADE \
             -e ATH9K_HTC -e RTL8187 -e RTL8812AU -e RTL88XXAU -e RTL88X2BU -e CFG80211 \
-            --set-str LOCALVERSION "-Laksanasoft-NH-v2.1-Kexec"
+            --set-str LOCALVERSION "-Laksanasoft-NH-v2.2-Compressed"
           
           make O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- olddefconfig
 
-      - name: 🔨 Compile NetHunter Kernel & DTB (Uncompressed Raw ARM64 48MB)
+      - name: 🔨 Compile Compressed Kernel Image.gz & DTB (~18MB Payload)
         run: |
           cd kernel
           export CLANG_PATH="$(pwd)/../clang/bin"
-          make -j$(nproc --all) O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- KCFLAGS="-Wno-error" Image dtbs
+          make -j$(nproc --all) O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- KCFLAGS="-Wno-error" Image.gz dtbs
           
           if [ -d "out/arch/arm64/boot/dts/exynos" ]; then
             cat out/arch/arm64/boot/dts/exynos/*.dtb > out/arch/arm64/boot/dtb || true
           fi
-          if [ -f "out/arch/arm64/boot/Image" ] && [ -f "out/arch/arm64/boot/dtb" ]; then
-            cat out/arch/arm64/boot/Image out/arch/arm64/boot/dtb > out/arch/arm64/boot/Image-dtb
+          if [ -f "out/arch/arm64/boot/Image.gz" ] && [ -f "out/arch/arm64/boot/dtb" ]; then
+            cat out/arch/arm64/boot/Image.gz out/arch/arm64/boot/dtb > out/arch/arm64/boot/Image.gz-dtb
           fi
 
-      - name: 📦 Package NetHunter Enterprise Kernel (Fix AnyKernel3 Samsung S10+ Block Path)
+      - name: 📦 Package Compressed NetHunter Enterprise Kernel (Image.gz-dtb)
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
-          if [ -f "kernel/out/arch/arm64/boot/Image-dtb" ]; then
-            cp kernel/out/arch/arm64/boot/Image-dtb AnyKernel3/
-          elif [ -f "kernel/out/arch/arm64/boot/Image" ]; then
-            cp kernel/out/arch/arm64/boot/Image AnyKernel3/
+          if [ -f "kernel/out/arch/arm64/boot/Image.gz-dtb" ]; then
+            cp kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
+          elif [ -f "kernel/out/arch/arm64/boot/Image.gz" ]; then
+            cp kernel/out/arch/arm64/boot/Image.gz AnyKernel3/
           fi
           if [ -f "kernel/out/arch/arm64/boot/dtb" ]; then
             cp kernel/out/arch/arm64/boot/dtb AnyKernel3/
@@ -113,7 +111,6 @@ jobs:
           sed -i 's|BLOCK=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot;|if [ -b /dev/block/by-name/boot ]; then BLOCK=/dev/block/by-name/boot; elif [ -b /dev/block/sda14 ]; then BLOCK=/dev/block/sda14; else BLOCK=auto; fi;|' anykernel.sh
           sed -i 's/do.devicecheck=1/do.devicecheck=0/' anykernel.sh
           
-          # Force Unix zip archive
           zip -r9 ../NetHunter-Kernel-Native-Linux-Kexec.zip *
 
       - name: 🚀 Upload Kernel Artifact
