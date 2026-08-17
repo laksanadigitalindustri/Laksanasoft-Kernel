@@ -1,4 +1,4 @@
-name: Build NetHunter Enterprise Kernel
+name: Build NetHunter Enterprise Kernel (Native Linux + Kexec)
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    name: Compile Complete NetHunter Kernel (MassStorage + VHCI + Docker + CAN + APatch)
+    name: Compile Complete NetHunter Kernel (Native Linux + Kexec + Docker + MassStorage)
     runs-on: ubuntu-latest
     steps:
       - name: 🛠️ Setup Build Environment
@@ -24,7 +24,7 @@ jobs:
         run: |
           git clone --recurse-submodules https://github.com/v0lk3n/nethunter_kernel_samsung_exynos9820.git -b nethunter-lineage-23.2 kernel
 
-      - name: ⚙️ Configure & Tune Defconfig (MassStorage + VHCI + Docker + CAN + Drivers)
+      - name: ⚙️ Configure & Tune Defconfig (Native Linux + Kexec + DEVTMPFS + VT + NetHunter)
         run: |
           cd kernel
           export ARCH=arm64
@@ -42,6 +42,14 @@ jobs:
           
           # Built-in Vendor Drivers (prevent vermagic mismatch bootloop)
           ./scripts/config --file out/.config -e MALI_B_KBASE -e BCMDHD
+          
+          # NATIVE LINUX BOOTING & KEXEC REQUIREMENTS
+          ./scripts/config --file out/.config \
+            -e DEVTMPFS -e DEVTMPFS_MOUNT \
+            -e VT -e VT_CONSOLE -e HW_CONSOLE \
+            -e TMPFS -e TMPFS_POSIX_ACL -e TMPFS_XATTR \
+            -e KEXEC -e KEXEC_CORE -e KEXEC_FILE \
+            -e BLK_DEV_INITRD -e BLK_DEV_LOOP -e BLK_DEV_RAM
           
           # USB ConfigFS Gadgets (HID BadUSB + USB Mass Storage Drive Mount)
           ./scripts/config --file out/.config \
@@ -67,7 +75,7 @@ jobs:
             -e BRIDGE -e VETH -e MACVLAN -e TAP -e TUN -e OVERLAY_FS \
             -e NETFILTER_XT_MARK -e IP_NF_FILTER -e IP_NF_TARGET_MASQUERADE \
             -e ATH9K_HTC -e RTL8187 -e RTL8812AU -e RTL88XXAU -e RTL88X2BU -e CFG80211 \
-            --set-str LOCALVERSION "-Laksanasoft-NetHunter-Enterprise-v1.0"
+            --set-str LOCALVERSION "-Laksanasoft-NetHunter-Enterprise-v2.0-Kexec"
           
           make O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- olddefconfig
 
@@ -84,7 +92,7 @@ jobs:
             cat out/arch/arm64/boot/Image out/arch/arm64/boot/dtb > out/arch/arm64/boot/Image-dtb
           fi
 
-      - name: 📦 Package NetHunter Enterprise Kernel (All Features Included)
+      - name: 📦 Package NetHunter Enterprise Kernel (Native Linux + Kexec Included)
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
           if [ -f "kernel/out/arch/arm64/boot/Image-dtb" ]; then
@@ -97,10 +105,10 @@ jobs:
           fi
           cd AnyKernel3
           sed -i 's/device.name1=maguro/device.name1=beyond2lte/' anykernel.sh
-          zip -r9 ../NetHunter-Enterprise-ALL-FEATURES.zip *
+          zip -r9 ../NetHunter-Kernel-Native-Linux-Kexec.zip *
 
       - name: 🚀 Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: NetHunter-Enterprise-ALL-FEATURES
-          path: NetHunter-Enterprise-ALL-FEATURES.zip
+          name: NetHunter-Kernel-Native-Linux-Kexec
+          path: NetHunter-Kernel-Native-Linux-Kexec.zip
