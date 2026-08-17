@@ -24,11 +24,15 @@ jobs:
         run: |
           git clone --recurse-submodules https://github.com/v0lk3n/nethunter_kernel_samsung_exynos9820.git -b nethunter-lineage-23.2 kernel
 
-      - name: ⚙️ Configure & Tune Defconfig (Native Linux + Kexec + DEVTMPFS + VT + NetHunter)
+      - name: ⚙️ Configure & Tune Defconfig (Force KEXEC, VT, DEVTMPFS in Kconfig)
         run: |
           cd kernel
           export ARCH=arm64
           export CLANG_PATH="$(pwd)/../clang/bin"
+          
+          # Force unlock KEXEC, VT & FRAMEBUFFER_CONSOLE in Kconfig sources directly
+          sed -i 's/bool "kexec system call" if EXPERT/bool "kexec system call"/' arch/arm64/Kconfig || true
+          sed -i 's/depends on TTY/select VT/g' drivers/tty/Kconfig || true
           
           DEFCONFIG="exynos9820-beyond2lte_defconfig"
           if [ ! -f "arch/arm64/configs/$DEFCONFIG" ]; then
@@ -43,13 +47,13 @@ jobs:
           # Built-in Vendor Drivers (prevent vermagic mismatch bootloop)
           ./scripts/config --file out/.config -e MALI_B_KBASE -e BCMDHD
           
-          # NATIVE LINUX BOOTING & KEXEC REQUIREMENTS
+          # NATIVE LINUX BOOTING & KEXEC REQUIREMENTS (FORCE MANDATORY)
           ./scripts/config --file out/.config \
-            -e DEVTMPFS -e DEVTMPFS_MOUNT \
-            -e VT -e VT_CONSOLE -e HW_CONSOLE \
-            -e TMPFS -e TMPFS_POSIX_ACL -e TMPFS_XATTR \
-            -e KEXEC -e KEXEC_CORE -e KEXEC_FILE \
-            -e BLK_DEV_INITRD -e BLK_DEV_LOOP -e BLK_DEV_RAM
+            --enable DEVTMPFS --enable DEVTMPFS_MOUNT \
+            --enable TTY --enable VT --enable VT_CONSOLE --enable HW_CONSOLE --enable FRAMEBUFFER_CONSOLE \
+            --enable TMPFS --enable TMPFS_POSIX_ACL --enable TMPFS_XATTR \
+            --enable KEXEC --enable KEXEC_CORE --enable KEXEC_FILE \
+            --enable BLK_DEV_INITRD --enable BLK_DEV_LOOP --enable BLK_DEV_RAM
           
           # USB ConfigFS Gadgets (HID BadUSB + USB Mass Storage Drive Mount)
           ./scripts/config --file out/.config \
@@ -75,7 +79,7 @@ jobs:
             -e BRIDGE -e VETH -e MACVLAN -e TAP -e TUN -e OVERLAY_FS \
             -e NETFILTER_XT_MARK -e IP_NF_FILTER -e IP_NF_TARGET_MASQUERADE \
             -e ATH9K_HTC -e RTL8187 -e RTL8812AU -e RTL88XXAU -e RTL88X2BU -e CFG80211 \
-            --set-str LOCALVERSION "-Laksanasoft-NH-v2.0-Kexec"
+            --set-str LOCALVERSION "-Laksanasoft-NH-v2.1-Kexec"
           
           make O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- olddefconfig
 
@@ -106,8 +110,10 @@ jobs:
           cd AnyKernel3
           sed -i 's/device.name1=maguro/device.name1=beyond2lte/' anykernel.sh
           sed -i 's/device.name2=toro/device.name2=beyond2/' anykernel.sh
-          sed -i 's|BLOCK=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot;|BLOCK=/dev/block/by-name/boot;|' anykernel.sh
+          sed -i 's|BLOCK=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot;|if [ -b /dev/block/by-name/boot ]; then BLOCK=/dev/block/by-name/boot; elif [ -b /dev/block/sda14 ]; then BLOCK=/dev/block/sda14; else BLOCK=auto; fi;|' anykernel.sh
           sed -i 's/do.devicecheck=1/do.devicecheck=0/' anykernel.sh
+          
+          # Force Unix zip archive
           zip -r9 ../NetHunter-Kernel-Native-Linux-Kexec.zip *
 
       - name: 🚀 Upload Kernel Artifact
