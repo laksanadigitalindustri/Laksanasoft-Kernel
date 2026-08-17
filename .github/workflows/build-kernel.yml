@@ -92,7 +92,7 @@ jobs:
             cat out/arch/arm64/boot/Image out/arch/arm64/boot/dtb > out/arch/arm64/boot/Image-dtb
           fi
 
-      - name: 📦 Package NetHunter Enterprise Kernel (Native Linux + Kexec Included)
+      - name: 📦 Package NetHunter Enterprise Kernel (Fix AnyKernel3 Samsung S10+ Block Path)
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
           if [ -f "kernel/out/arch/arm64/boot/Image-dtb" ]; then
@@ -105,6 +105,9 @@ jobs:
           fi
           cd AnyKernel3
           sed -i 's/device.name1=maguro/device.name1=beyond2lte/' anykernel.sh
+          sed -i 's/device.name2=toro/device.name2=beyond2/' anykernel.sh
+          sed -i 's|BLOCK=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot;|BLOCK=/dev/block/by-name/boot;|' anykernel.sh
+          sed -i 's/do.devicecheck=1/do.devicecheck=0/' anykernel.sh
           zip -r9 ../NetHunter-Kernel-Native-Linux-Kexec.zip *
 
       - name: 🚀 Upload Kernel Artifact
