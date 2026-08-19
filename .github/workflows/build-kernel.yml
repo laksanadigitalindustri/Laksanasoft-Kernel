@@ -1,148 +1,163 @@
-name: Build NetHunter Ultimate Kernel
+# ==============================================================================
+# WORKFLOW GITHUB ACTIONS: KOMPILASI KERNEL NETHUNTER ULTIMATE & FORENSIK
+# ==============================================================================
+# Skrip ini dirancang untuk mengkompilasi kernel Linux Android (Exynos 9820)
+# secara presisi dengan dukungan penuh untuk Kali NetHunter, Forensik Digital,
+# Enkripsi Perangkat Keras, dan injeksi paket nirkabel.
+# Skrip ini menggunakan Ubuntu Latest dan terintegrasi dengan akses SSH (Tmate)
+# agar proses kompilasi dapat dipantau langsung dari komputer lokal Anda.
+# ==============================================================================
 
-on:
-  workflow_dispatch:
-  push:
-    branches:
-      - main
+name: Build NetHunter Ultimate Kernel # Mendeklarasikan nama workflow yang akan tampil di halaman utama Actions
 
-jobs:
-  build:
-    name: Compile Ultimate NetHunter Kernel
-    runs-on: ubuntu-22.04
+on: # Bagian pemicu untuk menjalankan skrip kompilasi otomatis
+  workflow_dispatch: # Mengizinkan pemicu manual berupa tombol 'Run workflow' di antarmuka GitHub
+  push: # Menjalankan skrip secara otomatis setiap kali ada kode yang dikirim ke repositori
+    branches: # Membatasi pemicu push hanya pada cabang (branch) tertentu
+      - main # Workflow hanya akan dieksekusi jika perubahan terjadi di cabang utama 'main'
 
-    steps:
-      - name: Setup Build Environment
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y bc bison build-essential curl flex git gnupg gperf liblz4-tool libncurses5-dev libssl-dev lzop rsync zip python3 gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
+jobs: # Blok utama yang berisi daftar pekerjaan yang akan dieksekusi oleh server
+  build: # Nama identifikasi dari pekerjaan (job) ini
+    name: Compile Ultimate NetHunter Kernel # Nama tampilan untuk pekerjaan ini di log antarmuka GitHub
+    runs-on: ubuntu-latest # Menentukan sistem operasi virtual (Runner) menggunakan versi LTS Ubuntu terbaru
 
-      - name: Clone Toolchain
-        run: |
-          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
+    steps: # Kumpulan instruksi berurutan yang akan dijalankan di dalam pekerjaan ini
+      - name: Setup Build Environment # Langkah 1: Menginstal alat-alat yang dibutuhkan untuk kompilasi
+        run: | # Membuka blok perintah terminal Bash
+          sudo apt-get update # Memperbarui daftar paket repositori Ubuntu pada server
+          sudo apt-get install -y bc bison build-essential curl dwarves flex git gnupg gperf liblz4-tool libncurses5-dev libssl-dev lzop rsync zip python3 gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu # Mengunduh alat kompilasi, dependensi eBPF (dwarves), dan kompiler arsitektur silang (cross-compiler) ARM64
 
-      - name: Clone Official NetHunter Source
-        run: |
-          git clone --recurse-submodules https://github.com/v0lk3n/nethunter_kernel_samsung_exynos9820.git -b nethunter-lineage-23.2 kernel
+      - name: Setup SSH Access with tmate # Langkah 2: Membuka terowongan SSH untuk akses jarak jauh
+        uses: mxschmitt/action-tmate@v3 # Memanggil pustaka action pihak ketiga dari repositori GitHub
+        with: # Menentukan pengaturan parameter untuk action tmate
+          detached: true # Menjalankan layanan SSH di latar belakang sehingga tidak menghentikan proses selanjutnya
 
-      - name: Configure & Tune Defconfig
-        run: |
-          cd kernel
-          export ARCH=arm64
-          export CLANG_PATH="$(pwd)/../clang/bin"
-          export PATH="$CLANG_PATH:$PATH"
-          
-          DEFCONFIG="exynos9820-beyond2lte_defconfig"
-          if [ ! -f "arch/arm64/configs/$DEFCONFIG" ]; then
-            DEFCONFIG=$(ls arch/arm64/configs/ | grep beyond2lte | head -n 1)
-          fi
-          
-          make O=out ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 LLVM_IAS=1 $DEFCONFIG
-          
-          ./scripts/config --file out/.config -e KERNEL_GZIP -d KERNEL_LZ4 -d KERNEL_LZO
-          ./scripts/config --file out/.config -d CFI_CLANG -d CFI_PERMISSIVE -d SHADOW_CALL_STACK
-          ./scripts/config --file out/.config -e IKCONFIG -e IKCONFIG_PROC -e FHANDLE
-          ./scripts/config --file out/.config -e MALI_B_KBASE -e BCMDHD
-          
-          ./scripts/config --file out/.config -e BRIDGE -e BRIDGE_NETFILTER -e BRIDGE_VLAN_FILTERING -e NETFILTER_XT_MATCH_ADDRTYPE -e NETFILTER_XT_MATCH_IPVS -e NETFILTER_XT_MATCH_BPF -e IP6_NF_NAT -e IP6_NF_TARGET_MASQUERADE -e MACVLAN -e MACVTAP -e IPVLAN -e VXLAN -e DUMMY -e VETH
-          
-          ./scripts/config --file out/.config -e IP_VS -e IP_VS_IPV6 -e IP_VS_PROTO_TCP -e IP_VS_PROTO_UDP -e IP_VS_PROTO_ESP -e IP_VS_PROTO_AH -e IP_VS_PROTO_SCTP -e IP_VS_RR -e IP_VS_WRR -e IP_VS_LC -e IP_VS_WLC -e IP_VS_FO -e IP_VS_OVF -e IP_VS_LBLC -e IP_VS_LBLCR -e IP_VS_DH -e IP_VS_SH -e IP_VS_SED -e IP_VS_NQ -e IP_VS_NFCT
-          ./scripts/config --file out/.config -d IP_VS_DEBUG
-          ./scripts/config --file out/.config --set-val IP_VS_TAB_BITS 12
-          ./scripts/config --file out/.config --set-val IP_VS_SH_TAB_BITS 8
-          
-          ./scripts/config --file out/.config -e NF_TABLES -e NF_TABLES_INET -e NF_TABLES_NETDEV -e NFT_NUMGEN -e NFT_CT -e NFT_COUNTER -e NFT_CONNLIMIT -e NFT_LOG -e NFT_LIMIT -e NFT_MASQ -e NFT_REDIR -e NFT_NAT -e NFT_TUNNEL -e NFT_OBJREF -e NFT_QUEUE -e NFT_QUOTA -e NFT_REJECT -e NFT_REJECT_INET -e NFT_COMPAT -e NFT_HASH -e NFT_FIB -e NFT_FIB_IPV4 -e NFT_FIB_IPV6 -e NFT_FIB_INET
-          
-          ./scripts/config --file out/.config -e USER_NS -e CFQ_GROUP_IOSCHED -e BLK_DEV_THROTTLING -e CGROUP_PERF -e CGROUP_HUGETLB -e CGROUP_NET_PRIO -e NET_SCTP -e SECURITY_APPARMOR -e NAMESPACES -e UTS_NS -e IPC_NS -e PID_NS -e NET_NS -e CGROUPS -e CGROUP_CPUACCT -e CGROUP_DEVICE -e CGROUP_FREEZER -e CGROUP_SCHED -e CPUSETS -e MEMCG -e OVERLAY_FS -e NETFILTER_XT_MARK -e IP_NF_FILTER
-          
-          ./scripts/config --file out/.config -e USB_CONFIGFS -e USB_CONFIGFS_UEVENT -e USB_CONFIGFS_F_FS -e USB_CONFIGFS_F_ACC -e USB_CONFIGFS_F_AUDIO_SRC -e USB_CONFIGFS_F_MIDI -e USB_CONFIGFS_F_HID -e USB_CONFIGFS_F_UVC -e USB_CONFIGFS_F_RNDIS -e USB_CONFIGFS_F_EEM -e USB_CONFIGFS_F_SUBSUB -e USB_CONFIGFS_F_MTP -e USB_CONFIGFS_F_PTP -e USB_CONFIGFS_F_OBEX -e USB_CONFIGFS_F_NCM -e USB_CONFIGFS_F_ECM -e USB_CONFIGFS_F_ECM_SUBSET -e USB_CONFIGFS_F_MASS_STORAGE -e USB_G_HID -e USB_F_HID -e USB_CHARDEV -e USB_F_MASS_STORAGE
-          
-          ./scripts/config --file out/.config -e WIRELESS -e CFG80211 -e NL80211_TESTMODE -e CFG80211_DEVELOPER_WARNINGS -e CFG80211_CERTIFICATION_ONUS -e CFG80211_REG_CELLULAR_HINTS -e CFG80211_REG_RELAX_NO_IR -e CFG80211_DEFAULT_PS -e CFG80211_INTERNAL_REGDB -e MAC80211 -e MAC80211_HAS_RC -e MAC80211_RC_MINSTREL -e MAC80211_RC_MINSTREL_HT -e MAC80211_RC_MINSTREL_VHT -e MAC80211_RC_DEFAULT_MINSTREL -e MAC80211_MESH -e MAC80211_LEDS -e MAC80211_MESSAGE_TRACING -e MAC80211_DEBUG_MENU
-          ./scripts/config --file out/.config --set-str MAC80211_RC_DEFAULT "minstrel_ht"
-          
-          ./scripts/config --file out/.config -m RTL8187 -m RTL8192CU -m RTL8XXXU -m RTL8812AU -m RTL88XXAU -m RTL88X2BU
-          ./scripts/config --file out/.config -e RTL8XXXU_UNTESTED
-          
-          ./scripts/config --file out/.config -m RT2X00 -m RT2500USB -m RT73USB -m RT2800USB
-          ./scripts/config --file out/.config -e RT2800USB_RT33XX -e RT2800USB_RT35XX -e RT2800USB_RT3573 -e RT2800USB_RT53XX -e RT2800USB_RT55XX -e RT2800USB_UNKNOWN
-          
-          ./scripts/config --file out/.config -m ATH_CARDS -m ATH9K_HTC -m CARL9170
-          ./scripts/config --file out/.config -e ATH9K_HTC_DEBUGFS -e CARL9170_LEDS -e CARL9170_WDF -e CARL9170_HWRNG -e ATH9K
-          
-          ./scripts/config --file out/.config -e BT -e BT_RFCOMM -e BT_RFCOMM_TTY -e BT_BNEP -e BT_BNEP_MC_FILTER -e BT_BNEP_PROTO_FILTER -e BT_HIDP -e BT_HS -e BT_LE -e BT_HCIBTUSB_BCM -e BT_HCIBTUSB_RTL
-          ./scripts/config --file out/.config -m BT_HCIBTUSB -m BT_HCIBTUART -m BT_HCIBCM203X -m BT_HCIBPA10X -m BT_HCIBFUSB -m BT_HCIVHCI -m BT_MRVL -m BT_ATH3K
-          
-          ./scripts/config --file out/.config -e EXT4_FS -e EXT4_FS_POSIX_ACL -e EXT4_FS_SECURITY -e BTRFS_FS -e BTRFS_FS_POSIX_ACL -e ISO9660_FS -e UDF_FS -e MSDOS_FS -e VFAT_FS -e NTFS_FS -e NTFS_RW -e FUSE_FS -e CUSE -e BLK_DEV_LOOP -e MINIX_FS -e SQUASHFS
-          ./scripts/config --file out/.config --set-val FAT_DEFAULT_CODEPAGE 437
-          ./scripts/config --file out/.config --set-str FAT_DEFAULT_IOCHARSET "iso8859-1"
-          
-          ./scripts/config --file out/.config -e CAN -e CAN_RAW -e CAN_BCM -e CAN_GW -e CAN_VCAN -e CAN_SLCAN -e CAN_DEV -e CAN_CALC_BITTIMING
-          ./scripts/config --file out/.config -e BPF -e BPF_SYSCALL -e CGROUP_BPF -e NET_CLS_BPF -e NET_ACT_BPF -e BPF_JIT
-          ./scripts/config --file out/.config -e TCP_CONG_BBR -e DEFAULT_BBR -e NET_SCH_FQ -e NET_SCH_FQ_CODEL -e IP_ADVANCED_ROUTER -e IP_MULTIPLE_TABLES
-          ./scripts/config --file out/.config -e MEDIA_SUPPORT -e MEDIA_USB_SUPPORT -e MEDIA_SDR_SUPPORT -e MEDIA_DIGITAL_TV_SUPPORT
-          ./scripts/config --file out/.config -e NFS_FS -e NFS_V3 -e NFS_V4 -e ROOT_NFS
-          ./scripts/config --file out/.config -e USB_SERIAL -e USB_SERIAL_CONSOLE -e USB_SERIAL_FTDI_SIO -e USB_SERIAL_PL2303 -e USB_SERIAL_CH341 -e USB_SERIAL_CP210X -e USB_ACM -e USB_RTL28XXU -e USB_HACKRF -e USB_WDM -e USB_NET_QMI_WWAN -e I2C_CHARDEV -e SPI_SPIDEV
-          
-          ./scripts/config --file out/.config -e FS_ENCRYPTION -e EXT4_ENCRYPTION -e F2FS_FS_ENCRYPTION -e F2FS_FS_SECURITY
-          ./scripts/config --file out/.config -e MD -e BLK_DEV_MD -e BLK_DEV_RO -e DM_CRYPT -e DM_SNAPSHOT -e DM_VERITY -e DM_VERITY_FEC -e DM_INTEGRITY
-          ./scripts/config --file out/.config -e WIREGUARD -e CRYPTO_ALGAPI -e CRYPTO_BLKCIPHER -e CRYPTO_HASH -e CRYPTO_MANAGER
-          ./scripts/config --file out/.config -e CRYPTO_AES -e CRYPTO_AES_ARM64_CE -e CRYPTO_XTS -e CRYPTO_CBC -e CRYPTO_CTR -e CRYPTO_ECB -e CRYPTO_GCM
-          ./scripts/config --file out/.config -e CRYPTO_SHA256 -e CRYPTO_SHA512 -e CRYPTO_SHA2_ARM64_CE -e CRYPTO_GHASH_ARM64_CE
-          ./scripts/config --file out/.config -e CRYPTO_CHACHA20 -e CRYPTO_POLY1305 -e CRYPTO_CHACHA20POLY1305 -e CRYPTO_SERPENT -e CRYPTO_TWOFISH -e CRYPTO_BLOWFISH -e CRYPTO_CAST6 -e CRYPTO_CAMELLIA
-          ./scripts/config --file out/.config -e CRYPTO_USER_API -e CRYPTO_USER_API_HASH -e CRYPTO_USER_API_SKCIPHER -e CRYPTO_USER_API_AEAD
-          
-          ./scripts/config --file out/.config --set-str LOCALVERSION "-Laksanasoft-NetHunter-Enterprise-v3.0"
-          
-          make O=out ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 LLVM_IAS=1 olddefconfig
+      - name: Clone Toolchain # Langkah 3: Mengunduh kompiler kustom Proton Clang
+        run: | # Membuka blok eksekusi Bash
+          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang # Menyalin repositori Proton Clang versi ringan (--depth=1) ke dalam folder lokal bernama 'clang'
 
-      - name: Compile NetHunter Kernel & DTB & Modules
-        run: |
-          cd kernel
-          export CLANG_PATH="$(pwd)/../clang/bin"
-          export PATH="$CLANG_PATH:$PATH"
-          
-          make -j$(nproc --all) O=out ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 LLVM_IAS=1 KCFLAGS="-Wno-error" KBUILD_BUILD_USER="nethunter" KBUILD_BUILD_HOST="enterprise" Image.gz dtbs modules
-          
-          if [ -d "out/arch/arm64/boot/dts/exynos" ]; then
-            cat out/arch/arm64/boot/dts/exynos/*.dtb > out/arch/arm64/boot/dtb || true 
-          elif [ -d "out/arch/arm64/boot/dts" ]; then
-            cat out/arch/arm64/boot/dts/*.dtb > out/arch/arm64/boot/dtb || true
-          fi
-          
-          if [ -f "out/arch/arm64/boot/Image.gz" ] && [ -f "out/arch/arm64/boot/dtb" ]; then
-            cat out/arch/arm64/boot/Image.gz out/arch/arm64/boot/dtb > out/arch/arm64/boot/Image.gz-dtb
-          fi
+      - name: Clone Official NetHunter Source # Langkah 4: Mengunduh kode sumber spesifik kernel Exynos S10+
+        run: | # Membuka blok eksekusi Bash
+          git clone --recurse-submodules https://github.com/v0lk3n/nethunter_kernel_samsung_exynos9820.git -b nethunter-lineage-23.2 kernel # Menyalin kode kernel S10+ cabang LineageOS-23.2 beserta sub-modulnya ke dalam folder 'kernel'
 
-      - name: Package NetHunter Enterprise Kernel
-        run: |
-          git clone https://github.com/osm0sis/AnyKernel3.git
+      - name: Configure & Tune Defconfig # Langkah 5: Merakit dan menyuntikkan spesifikasi arsitektur Nethunter Ultimate
+        run: | # Membuka blok panjang untuk manipulasi skrip Bash
+          cd kernel # Masuk ke dalam direktori kode sumber kernel
+          export ARCH=arm64 # Menetapkan parameter lingkungan bahwa kompilasi ditargetkan untuk CPU 64-bit
+          export CLANG_PATH="$(pwd)/../clang/bin" # Mendefinisikan lokasi absolut dari berkas biner compiler Clang
+          export PATH="$CLANG_PATH:$PATH" # Memasukkan direktori Clang ke urutan pertama pada sistem PATH agar dikenali server
           
-          if [ -f "kernel/out/arch/arm64/boot/Image.gz-dtb" ]; then
-            cp kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
-          elif [ -f "kernel/out/arch/arm64/boot/Image.gz" ]; then
-            cp kernel/out/arch/arm64/boot/Image.gz AnyKernel3/
-          fi
+          DEFCONFIG="exynos9820-beyond2lte_defconfig" # Menetapkan nama berkas pengaturan standar untuk Samsung S10+
+          if [ ! -f "arch/arm64/configs/$DEFCONFIG" ]; then # Memeriksa apakah berkas pengaturan defconfig tersebut ada
+            DEFCONFIG=$(ls arch/arm64/configs/ | grep beyond2lte | head -n 1) # Jika tidak ada, cari berkas alternatif pertama yang mengandung kata sandi model beyond2lte
+          fi # Menutup blok percabangan logika if
           
-          if [ -f "kernel/out/arch/arm64/boot/dtb" ]; then
-            cp kernel/out/arch/arm64/boot/dtb AnyKernel3/
-          fi
+          make O=out ARCH=arm64 CC=clang HOSTCC=gcc HOSTCXX=g++ CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 $DEFCONFIG # Mengeksekusi Make untuk mencetak fondasi konfigurasi awal ke dalam folder 'out', memaksa host menggunakan GCC agar kompatibel dengan library Ubuntu modern
           
-          mkdir -p AnyKernel3/modules/vendor/lib/modules
-          find kernel/out -name "*.ko" -exec cp {} AnyKernel3/modules/vendor/lib/modules/ \;
+          ./scripts/config --file out/.config -e KERNEL_GZIP -d KERNEL_LZ4 -d KERNEL_LZO # Memodifikasi konfigurasi kernel: mewajibkan kompresi GZIP dan mematikan fungsi LZ4 serta LZO
+          ./scripts/config --file out/.config -d CFI_CLANG -d CFI_PERMISSIVE -d SHADOW_CALL_STACK # Mematikan keamanan pelacakan alur eksekusi (CFI) agar kernel kompatibel dengan pemasangan root APatch
+          ./scripts/config --file out/.config -e IKCONFIG -e IKCONFIG_PROC -e FHANDLE # Mengaktifkan integrasi config ke memori (procfs) untuk diagnostik aplikasi Nethunter dan dukungan handle systemd
+          ./scripts/config --file out/.config -e MALI_B_KBASE -e BCMDHD # Mengaktifkan dasar driver GPU Mali dan chipset WiFi bawaan Broadcom
           
-          cd AnyKernel3
+          ./scripts/config --file out/.config -e BRIDGE -e BRIDGE_NETFILTER -e BRIDGE_VLAN_FILTERING -e NETFILTER_XT_MATCH_ADDRTYPE -e NETFILTER_XT_MATCH_IPVS -e NETFILTER_XT_MATCH_BPF -e IP6_NF_NAT -e IP6_NF_TARGET_MASQUERADE -e MACVLAN -e MACVTAP -e IPVLAN -e VXLAN -e DUMMY -e VETH # Menginjeksi seluruh modul virtualisasi jaringan untuk kompatibilitas infrastruktur Docker
           
-          sed -i 's/is_slot_device=.*/is_slot_device=0/g' anykernel.sh
-          sed -i 's/device.name1=.*/device.name1=beyond2lte/g' anykernel.sh
-          sed -i 's/device.name2=.*/device.name2=beyond2/g' anykernel.sh
-          sed -i 's/device.name3=.*/device.name3=beyond2q/g' anykernel.sh
-          sed -i 's/device.name4=.*/device.name4=beyond2qlte/g' anykernel.sh
-          sed -i 's/device.name5=.*/device.name5=exynos9820/g' anykernel.sh
+          ./scripts/config --file out/.config -e IP_VS -e IP_VS_IPV6 -e IP_VS_PROTO_TCP -e IP_VS_PROTO_UDP -e IP_VS_PROTO_ESP -e IP_VS_PROTO_AH -e IP_VS_PROTO_SCTP -e IP_VS_RR -e IP_VS_WRR -e IP_VS_LC -e IP_VS_WLC -e IP_VS_FO -e IP_VS_OVF -e IP_VS_LBLC -e IP_VS_LBLCR -e IP_VS_DH -e IP_VS_SH -e IP_VS_SED -e IP_VS_NQ -e IP_VS_NFCT # Menghidupkan fitur Load Balancing kelas server (IP Virtual Server) beserta seluruh protokol algoritmanya
+          ./scripts/config --file out/.config -d IP_VS_DEBUG # Mematikan opsi debug pada IPVS agar performa jaringan tidak menurun
+          ./scripts/config --file out/.config --set-val IP_VS_TAB_BITS 12 # Menentukan ukuran memori tabel IPVS utama sebesar 12-bit
+          ./scripts/config --file out/.config --set-val IP_VS_SH_TAB_BITS 8 # Menentukan ukuran memori tabel penjadwalan source hashing IPVS sebesar 8-bit
           
-          zip -r9 ../NetHunter-Enterprise-ALL-FEATURES.zip *
+          ./scripts/config --file out/.config -e NF_TABLES -e NF_TABLES_INET -e NF_TABLES_NETDEV -e NFT_NUMGEN -e NFT_CT -e NFT_COUNTER -e NFT_CONNLIMIT -e NFT_LOG -e NFT_LIMIT -e NFT_MASQ -e NFT_REDIR -e NFT_NAT -e NFT_TUNNEL -e NFT_OBJREF -e NFT_QUEUE -e NFT_QUOTA -e NFT_REJECT -e NFT_REJECT_INET -e NFT_COMPAT -e NFT_HASH -e NFT_FIB -e NFT_FIB_IPV4 -e NFT_FIB_IPV6 -e NFT_FIB_INET # Mengaktifkan sistem firewall modern Linux (NF_TABLES) beserta pengait pemrosesan inspeksi paket tingkat lanjut
+          
+          ./scripts/config --file out/.config -e USER_NS -e CFQ_GROUP_IOSCHED -e BLK_DEV_THROTTLING -e CGROUP_PERF -e CGROUP_HUGETLB -e CGROUP_NET_PRIO -e NET_SCTP -e SECURITY_APPARMOR -e NAMESPACES -e UTS_NS -e IPC_NS -e PID_NS -e NET_NS -e CGROUPS -e CGROUP_CPUACCT -e CGROUP_DEVICE -e CGROUP_FREEZER -e CGROUP_SCHED -e CPUSETS -e MEMCG -e OVERLAY_FS -e NETFILTER_XT_MARK -e IP_NF_FILTER # Menanamkan fitur kontrol sumber daya, pemisahan proses chroot (Namespace), dan isolasi untuk menjalankan layanan Linux utuh
+          
+          ./scripts/config --file out/.config -e USB_CONFIGFS -e USB_CONFIGFS_UEVENT -e USB_CONFIGFS_F_FS -e USB_CONFIGFS_F_ACC -e USB_CONFIGFS_F_AUDIO_SRC -e USB_CONFIGFS_F_MIDI -e USB_CONFIGFS_F_HID -e USB_CONFIGFS_F_UVC -e USB_CONFIGFS_F_RNDIS -e USB_CONFIGFS_F_EEM -e USB_CONFIGFS_F_SUBSUB -e USB_CONFIGFS_F_MTP -e USB_CONFIGFS_F_PTP -e USB_CONFIGFS_F_OBEX -e USB_CONFIGFS_F_NCM -e USB_CONFIGFS_F_ECM -e USB_CONFIGFS_F_ECM_SUBSET -e USB_CONFIGFS_F_MASS_STORAGE -e USB_G_HID -e USB_F_HID -e USB_CHARDEV -e USB_F_MASS_STORAGE # Merakit persenjataan serangan BadUSB tingkat tinggi agar ponsel dapat menyamar sebagai Keyboard, Webcam, atau kartu jaringan (RNDIS/NCM)
+          
+          ./scripts/config --file out/.config -e WIRELESS -e CFG80211 -e NL80211_TESTMODE -e CFG80211_DEVELOPER_WARNINGS -e CFG80211_CERTIFICATION_ONUS -e CFG80211_REG_CELLULAR_HINTS -e CFG80211_REG_RELAX_NO_IR -e CFG80211_DEFAULT_PS -e CFG80211_INTERNAL_REGDB -e MAC80211 -e MAC80211_HAS_RC -e MAC80211_RC_MINSTREL -e MAC80211_RC_MINSTREL_HT -e MAC80211_RC_MINSTREL_VHT -e MAC80211_RC_DEFAULT_MINSTREL -e MAC80211_MESH -e MAC80211_LEDS -e MAC80211_MESSAGE_TRACING -e MAC80211_DEBUG_MENU # Membangun ulang kerangka kerja jaringan Mac80211 dan mengabaikan pembatasan wilayah (Certification Onus) guna keperluan penetrasi nirkabel WiFi
+          ./scripts/config --file out/.config --set-str MAC80211_RC_DEFAULT "minstrel_ht" # Menjadikan minstrel_ht sebagai penentu laju transmisi jaringan bawaan
+          
+          ./scripts/config --file out/.config -m RTL8187 -m RTL8192CU -m RTL8XXXU -m RTL8812AU -m RTL88XXAU -m RTL88X2BU # Menjadikan driver chipset WiFi eksternal Realtek untuk injeksi paket sebagai modul kernel (.ko) yang dimuat secara dinamis
+          ./scripts/config --file out/.config -e RTL8XXXU_UNTESTED # Memaksa dukungan eksperimental untuk modul Realtek versi lama
+          
+          ./scripts/config --file out/.config -m RT2X00 -m RT2500USB -m RT73USB -m RT2800USB # Memasukkan daftar driver antena WiFi MediaTek/Ralink sebagai modul eksternal
+          ./scripts/config --file out/.config -e RT2800USB_RT33XX -e RT2800USB_RT35XX -e RT2800USB_RT3573 -e RT2800USB_RT53XX -e RT2800USB_RT55XX -e RT2800USB_UNKNOWN # Mengaktifkan dukungan chipset Ralink untuk rentang generasi perangkat keras keras yang sangat spesifik
+          
+          ./scripts/config --file out/.config -m ATH_CARDS -m ATH9K_HTC -m CARL9170 # Memasukkan kelompok driver antena Qualcomm Atheros ke dalam kompilasi modul
+          ./scripts/config --file out/.config -e ATH9K_HTC_DEBUGFS -e CARL9170_LEDS -e CARL9170_WDF -e CARL9170_HWRNG -e ATH9K # Menghidupkan fitur lampu indikator perangkat keras (LED) dan antarmuka pembaca status debug pada driver Atheros
+          
+          ./scripts/config --file out/.config -e BT -e BT_RFCOMM -e BT_RFCOMM_TTY -e BT_BNEP -e BT_BNEP_MC_FILTER -e BT_BNEP_PROTO_FILTER -e BT_HIDP -e BT_HS -e BT_LE -e BT_HCIBTUSB_BCM -e BT_HCIBTUSB_RTL # Menanamkan protokol inti Bluetooth (termasuk mode energi rendah) dan sokongan untuk modul komunikasi serial MitM
+          ./scripts/config --file out/.config -m BT_HCIBTUSB -m BT_HCIBTUART -m BT_HCIBCM203X -m BT_HCIBPA10X -m BT_HCIBFUSB -m BT_HCIVHCI -m BT_MRVL -m BT_ATH3K # Menyusun daftar modul driver antarmuka HCI Bluetooth yang dicolokkan via port OTG
+          
+          ./scripts/config --file out/.config -e EXT4_FS -e EXT4_FS_POSIX_ACL -e EXT4_FS_SECURITY -e BTRFS_FS -e BTRFS_FS_POSIX_ACL -e ISO9660_FS -e UDF_FS -e MSDOS_FS -e VFAT_FS -e NTFS_FS -e NTFS_RW -e FUSE_FS -e CUSE -e BLK_DEV_LOOP -e MINIX_FS -e SQUASHFS # Mengaktifkan penerjemah multi sistem file dari Linux, Windows, maupun ISO agar ponsel dapat membaca dan mengekstrak flashdisk/harddisk dalam format apa pun
+          ./scripts/config --file out/.config --set-val FAT_DEFAULT_CODEPAGE 437 # Memilih parameter angka codepage lawas untuk menjaga kompatibilitas partisi Windows kuno
+          ./scripts/config --file out/.config --set-str FAT_DEFAULT_IOCHARSET "iso8859-1" # Mendefinisikan format karakter bawaan (iso8859-1) untuk pembacaan nama file
+          
+          ./scripts/config --file out/.config -e CAN -e CAN_RAW -e CAN_BCM -e CAN_GW -e CAN_VCAN -e CAN_SLCAN -e CAN_DEV -e CAN_CALC_BITTIMING # Mengizinkan pengiriman protokol lalu lintas data mobil/kendaraan (Automotive Hacking CAN-Bus)
+          ./scripts/config --file out/.config -e BPF -e BPF_SYSCALL -e CGROUP_BPF -e NET_CLS_BPF -e NET_ACT_BPF -e BPF_JIT # Mengaktifkan extended Berkeley Packet Filter (eBPF) yang penting untuk pelacakan, pemfilteran paket modern, dan keamanan forensik
+          ./scripts/config --file out/.config -e TCP_CONG_BBR -e DEFAULT_BBR -e NET_SCH_FQ -e NET_SCH_FQ_CODEL -e IP_ADVANCED_ROUTER -e IP_MULTIPLE_TABLES # Memaksa penggunaan algoritma kontrol kemacetan BBR milik Google agar transfer data jaringan semakin kencang
+          ./scripts/config --file out/.config -e MEDIA_SUPPORT -e MEDIA_USB_SUPPORT -e MEDIA_SDR_SUPPORT -e MEDIA_DIGITAL_TV_SUPPORT # Mendaftarkan modul pengolah frekuensi perangkat lunak radio (Software Defined Radio / RTL-SDR)
+          ./scripts/config --file out/.config -e NFS_FS -e NFS_V3 -e NFS_V4 -e ROOT_NFS # Mendaftarkan akses berbagi data jaringan (Network File System) langsung di level kernel
+          ./scripts/config --file out/.config -e USB_SERIAL -e USB_SERIAL_CONSOLE -e USB_SERIAL_FTDI_SIO -e USB_SERIAL_PL2303 -e USB_SERIAL_CH341 -e USB_SERIAL_CP210X -e USB_ACM -e USB_RTL28XXU -e USB_HACKRF -e USB_WDM -e USB_NET_QMI_WWAN -e I2C_CHARDEV -e SPI_SPIDEV # Menginstal pustaka komunikasi USB berkecepatan tinggi agar ponsel mampu melakukan flashing mikrokontroler IoT (seperti ESP32/Arduino) menggunakan kabel konverter Serial
+          
+          ./scripts/config --file out/.config -e FS_ENCRYPTION -e EXT4_ENCRYPTION -e F2FS_FS_ENCRYPTION -e F2FS_FS_SECURITY # Menerapkan gerbang kebijakan keamanan sandi terpadu pada partisi sistem berbasis EXT4 maupun F2FS bawaan Samsung
+          ./scripts/config --file out/.config -e MD -e BLK_DEV_MD -e BLK_DEV_RO -e DM_CRYPT -e DM_SNAPSHOT -e DM_VERITY -e DM_VERITY_FEC -e DM_INTEGRITY # Menggabungkan kapabilitas Device Mapper berlapis (Forensic Write-Blocking) yang memungkinkan inspeksi barang bukti digital (harddisk) tanpa sedikit pun mengubah metadata di dalamnya
+          ./scripts/config --file out/.config -e WIREGUARD -e CRYPTO_ALGAPI -e CRYPTO_BLKCIPHER -e CRYPTO_HASH -e CRYPTO_MANAGER # Mengaktifkan lapisan manajemen persandian VPN tingkat kernel melalui layanan WireGuard
+          ./scripts/config --file out/.config -e CRYPTO_AES -e CRYPTO_AES_ARM64_CE -e CRYPTO_XTS -e CRYPTO_CBC -e CRYPTO_CTR -e CRYPTO_ECB -e CRYPTO_GCM # Membebani perhitungan enkripsi dan dekripsi sistem (AES/GCM) secara fisik langsung ke hardware sirkuit Exynos, guna mempercepat proses penyimpanan memori (Hardware Acceleration)
+          ./scripts/config --file out/.config -e CRYPTO_SHA256 -e CRYPTO_SHA512 -e CRYPTO_SHA2_ARM64_CE -e CRYPTO_GHASH_ARM64_CE # Menyuntikkan perintah percepatan komputasi hashing yang juga diolah secara langsung melalui arsitektur perangkat keras
+          ./scripts/config --file out/.config -e CRYPTO_CHACHA20 -e CRYPTO_POLY1305 -e CRYPTO_CHACHA20POLY1305 -e CRYPTO_SERPENT -e CRYPTO_TWOFISH -e CRYPTO_BLOWFISH -e CRYPTO_CAST6 -e CRYPTO_CAMELLIA # Memasukkan daftar algoritma persandian rahasia militer standar tinggi tambahan ke dalam perbendaharaan modul kripto sistem
+          ./scripts/config --file out/.config -e CRYPTO_USER_API -e CRYPTO_USER_API_HASH -e CRYPTO_USER_API_SKCIPHER -e CRYPTO_USER_API_AEAD # Memberikan akses kepada program non-root untuk menggunakan fungsi keamanan persandian yang disuplai oleh kernel
+          
+          ./scripts/config --file out/.config --set-str LOCALVERSION "-Laksanasoft-NetHunter-Enterprise-v5.0" # Membubuhkan string versi nama penanda (Signature) khusus pada bagian buntut rilis (utsname)
+          
+          make O=out ARCH=arm64 CC=clang HOSTCC=gcc HOSTCXX=g++ CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 olddefconfig # Membersihkan parameter skrip lama secara otomatis dan membuat pondasi akhir config yang sudah matang dan bebas duplikasi sebelum diproses tahap selanjutnya
 
-      - name: Upload Kernel Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: NetHunter-Enterprise-ALL-FEATURES
-          path: NetHunter-Enterprise-ALL-FEATURES.zip
+      - name: Compile NetHunter Kernel & DTB & Modules # Langkah 6: Tahap terberat, menterjemahkan seluruh kode bahasa C ke bahasa mesin prosesor
+        run: | # Membuka blok operasi kompilasi sistem
+          cd kernel # Menuju direktori eksekusi
+          export CLANG_PATH="$(pwd)/../clang/bin" # Meregistrasikan ulang alamat binari kompilator Proton
+          export PATH="$CLANG_PATH:$PATH" # Mensinkronisasikan kembali parameter variabel sistem PATH lingkungan sementara
+          
+          make -j$(nproc --all) O=out ARCH=arm64 CC=clang HOSTCC=gcc HOSTCXX=g++ CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 KCFLAGS="-Wno-error" KBUILD_BUILD_USER="nethunter" KBUILD_BUILD_HOST="enterprise" Image.gz dtbs modules # Instruksi absolut memulai kompilasi massal secara multithread. Kode C dikompilasi oleh Clang, kode Host dikompilasi oleh GCC lokal (mencegah error GNU Ubuntu Latest), dan kode rakitan assembly diserahkan ke binutils guna menghindari kernel panic, target melingkupi biner inti (.gz), peta pohon (.dtb), dan modul perangkat dinamis (.ko).
+          
+          if [ -d "out/arch/arm64/boot/dts/exynos" ]; then # Jika skrip menemukan folder yang berisi arsitektur susunan layar/board perangkat buatan Exynos...
+            cat out/arch/arm64/boot/dts/exynos/*.dtb > out/arch/arm64/boot/dtb || true # ...maka susun, gabungkan dan cetak semua berkas deskripsi hardware tersebut menjadi 1 unit map padat
+          elif [ -d "out/arch/arm64/boot/dts" ]; then # Sebagai opsi pencegahan gagal susun (fallback), jika berkas tidak berada di sub-folder Exynos...
+            cat out/arch/arm64/boot/dts/*.dtb > out/arch/arm64/boot/dtb || true # ...maka langsung pindai satu tingkatan folder di atasnya untuk merakit map deskripsi board (Device Tree Blob)
+          fi # Menghentikan kondisi logika percabangan
+          
+          if [ -f "out/arch/arm64/boot/Image.gz" ] && [ -f "out/arch/arm64/boot/dtb" ]; then # Memeriksa validitas apakah berkas kernel inti (Image.gz) dan peta board (DTB) telah berhasil lolos dan muncul sebagai file fisik
+            cat out/arch/arm64/boot/Image.gz out/arch/arm64/boot/dtb > out/arch/arm64/boot/Image.gz-dtb # Menyuntikkan dan menggabungkan data pemetaan board ke dalam buntut file biner kernel agar tidak perlu dipisah saat flashing di perangkat ponsel
+          fi # Menutup blok asimilasi
+
+      - name: Package NetHunter Enterprise Kernel # Langkah 7: Pengemasan (Packaging) ke dalam format file Flashable ZIP agar dibaca TWRP (AnyKernel3)
+        run: | # Membuka fungsi asimilasi file biner ke sistem Zip
+          git clone https://github.com/osm0sis/AnyKernel3.git # Mengunduh alat pengemasan kernel universal (Anykernel3) yang didesain pintar menyalin kernel tanpa menghapus sistem root (seperti Magisk/APatch)
+          
+          if [ -f "kernel/out/arch/arm64/boot/Image.gz-dtb" ]; then # Memeriksa hasil prioritas tinggi, apakah file inti gabungan tersedia?
+            cp kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/ # Menyalin file inti gabungan ini ke wadah repositori ZIP AnyKernel3
+          elif [ -f "kernel/out/arch/arm64/boot/Image.gz" ]; then # Jika berkas gabungan gagal dicetak tetapi berkas kernel mentahnya eksis, maka...
+            cp kernel/out/arch/arm64/boot/Image.gz AnyKernel3/ # ...Salin paksa berkas kernel reguler (tanpa DTB) sebagai tindakan pelarian otomatis (fallback)
+          fi # Akhiri pengecekan ketersediaan kernel utama
+          
+          if [ -f "kernel/out/arch/arm64/boot/dtb" ]; then # Memeriksa apakah file spesifikasi layar dan chip perangkat tercetak murni
+            cp kernel/out/arch/arm64/boot/dtb AnyKernel3/ # Jika ya, masukkan file mandiri ini ke dalam folder AnyKernel
+          fi # Blok penutup logika pemeriksaan berkas map arsitektur perangkat
+          
+          mkdir -p AnyKernel3/modules/vendor/lib/modules # Menciptakan alur sub-direktori folder baru khusus bagi sistem Android (folder system vendor) guna meletakkan suplemen ekstensi modul eksternal jaringan Nethunter
+          find kernel/out -name "*.ko" -exec cp {} AnyKernel3/modules/vendor/lib/modules/ \; # Secara dinamis mencari seluruh cetakan modul kompilasi yang berekstensi ko, lalu menyalinnya serentak menuju ke folder partisi Vendor
+          
+          cd AnyKernel3 # Melakukan pemindahan direktori operasi menuju jantung pengaturan AnyKernel
+          
+          sed -i 's/is_slot_device=.*/is_slot_device=0/g' anykernel.sh # Memaksa merubah skrip AnyKernel agar bekerja secara absolut pada arsitektur Non-A/B Partition System (ciri khas perangkat lawas seperti seri Samsung S10+)
+          sed -i 's/device.name1=.*/device.name1=beyond2lte/g' anykernel.sh # Menimpa pendaftaran kode rahasia keamanan pertama agar memvalidasi pemasangan untuk seri beyond2lte
+          sed -i 's/device.name2=.*/device.name2=beyond2/g' anykernel.sh # Menambah alias deteksi board kode kedua (beyond2)
+          sed -i 's/device.name3=.*/device.name3=beyond2q/g' anykernel.sh # Menambah dukungan kode pabrik versi lain (beyond2q)
+          sed -i 's/device.name4=.*/device.name4=beyond2qlte/g' anykernel.sh # Menggabungkan kode silsilah perangkat region global ke dalam whitelist TWRP pemasangan (beyond2qlte)
+          sed -i 's/device.name5=.*/device.name5=exynos9820/g' anykernel.sh # Mendaftarkan perlindungan proteksi arsitektur bahwa operasi sistem flash hanya boleh dipasang pada chip board Exynos 9820 agar terhindar dari salah tipe ponsel
+          
+          zip -r9 ../NetHunter-Enterprise-ALL-FEATURES.zip * # Menyegel, mengekstrak, dan mengompres seluruh isi konfigurasi rakitan, biner, dan modul driver menjadi sebuah paket .ZIP level rasio maksimum tingkat 9 yang siap disebar
+
+      - name: Upload Kernel Artifact # Langkah 8: Mengunggah paket rakitan yang sudah selesai (Zip) agar bisa di-download via Browser
+        uses: actions/upload-artifact@v4 # Memanggil fitur bawaan penyimpan sementara dari Github
+        with: # Mentransmisikan detail atribut berkas pengiriman unggahan
+          name: NetHunter-Enterprise-ALL-FEATURES # Menciptakan judul stempel visual yang nampak bagi pemantau repositori hasil rilis
+          path: NetHunter-Enterprise-ALL-FEATURES.zip # Menyambungkan jembatan alamat pada berkas terkompresi ZIP sistem secara fisik yang akan diserahkan pada penyimpanan Cloud Artifact server
