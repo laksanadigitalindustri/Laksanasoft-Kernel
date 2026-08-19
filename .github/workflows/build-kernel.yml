@@ -1,4 +1,4 @@
-name: Build NetHunter Enterprise Kernel (Native Linux + Kexec)
+name: Build NetHunter Ultimate Kernel
 
 on:
   workflow_dispatch:
@@ -8,119 +8,141 @@ on:
 
 jobs:
   build:
-    name: Compile Complete NetHunter Kernel (Exact beyond2lte DTB + Image.gz)
+    name: Compile Ultimate NetHunter Kernel
     runs-on: ubuntu-latest
+
     steps:
-      - name: 🛠️ Setup Build Environment
+      - name: Setup Build Environment
         run: |
           sudo apt-get update
           sudo apt-get install -y bc bison build-essential curl flex git gnupg gperf liblz4-tool libncurses5-dev libssl-dev lzop rsync zip python3 gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: 📥 Clone Toolchain (Proton Clang)
+      - name: Clone Toolchain
         run: |
           git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
 
-      - name: 📥 Clone Official NetHunter Source (v0lk3n nethunter-lineage-23.2)
+      - name: Clone Official NetHunter Source
         run: |
           git clone --recurse-submodules https://github.com/v0lk3n/nethunter_kernel_samsung_exynos9820.git -b nethunter-lineage-23.2 kernel
 
-      - name: ⚙️ Configure & Tune Defconfig (Exact beyond2lte Hardware Config)
+      - name: Configure & Tune Defconfig
         run: |
           cd kernel
           export ARCH=arm64
           export CLANG_PATH="$(pwd)/../clang/bin"
-          
-          # Force unlock KEXEC, DEVTMPFS, TMPFS in Kconfig sources
-          sed -i 's/bool "kexec system call" if EXPERT/bool "kexec system call"/' arch/arm64/Kconfig || true
+          export PATH="$CLANG_PATH:$PATH"
           
           DEFCONFIG="exynos9820-beyond2lte_defconfig"
           if [ ! -f "arch/arm64/configs/$DEFCONFIG" ]; then
             DEFCONFIG=$(ls arch/arm64/configs/ | grep beyond2lte | head -n 1)
           fi
           
-          make O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- $DEFCONFIG
+          make O=out ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 LLVM_IAS=1 $DEFCONFIG
           
-          # Disable CFI to ensure 100% APatch KernelPatch Compatibility
+          ./scripts/config --file out/.config -e KERNEL_GZIP -d KERNEL_LZ4 -d KERNEL_LZO
           ./scripts/config --file out/.config -d CFI_CLANG -d CFI_PERMISSIVE -d SHADOW_CALL_STACK
-          
-          # Built-in Vendor Drivers
+          ./scripts/config --file out/.config -e IKCONFIG -e IKCONFIG_PROC -e FHANDLE
           ./scripts/config --file out/.config -e MALI_B_KBASE -e BCMDHD
           
-          # NATIVE LINUX BOOTING & KEXEC REQUIREMENTS
-          ./scripts/config --file out/.config \
-            --enable DEVTMPFS --enable DEVTMPFS_MOUNT \
-            --enable TMPFS --enable TMPFS_POSIX_ACL --enable TMPFS_XATTR \
-            --enable KEXEC --enable KEXEC_CORE --enable KEXEC_FILE \
-            --enable BLK_DEV_INITRD --enable BLK_DEV_LOOP --enable BLK_DEV_RAM
+          ./scripts/config --file out/.config -e BRIDGE -e BRIDGE_NETFILTER -e BRIDGE_VLAN_FILTERING -e NETFILTER_XT_MATCH_ADDRTYPE -e NETFILTER_XT_MATCH_IPVS -e NETFILTER_XT_MATCH_BPF -e IP6_NF_NAT -e IP6_NF_TARGET_MASQUERADE -e MACVLAN -e MACVTAP -e IPVLAN -e VXLAN -e DUMMY -e VETH
           
-          # USB ConfigFS Gadgets (HID BadUSB + USB Mass Storage Drive Mount)
-          ./scripts/config --file out/.config \
-            -e USB_CONFIGFS -e USB_CONFIGFS_F_HID -e USB_G_HID \
-            -e USB_CONFIGFS_F_FS -e USB_CONFIGFS_MASS_STORAGE -e USB_F_MASS_STORAGE
+          ./scripts/config --file out/.config -e IP_VS -e IP_VS_IPV6 -e IP_VS_PROTO_TCP -e IP_VS_PROTO_UDP -e IP_VS_PROTO_ESP -e IP_VS_PROTO_AH -e IP_VS_PROTO_SCTP -e IP_VS_RR -e IP_VS_WRR -e IP_VS_LC -e IP_VS_WLC -e IP_VS_FO -e IP_VS_OVF -e IP_VS_LBLC -e IP_VS_LBLCR -e IP_VS_DH -e IP_VS_SH -e IP_VS_SED -e IP_VS_NQ -e IP_VS_NFCT
+          ./scripts/config --file out/.config -d IP_VS_DEBUG
+          ./scripts/config --file out/.config --set-val IP_VS_TAB_BITS 12
+          ./scripts/config --file out/.config --set-val IP_VS_SH_TAB_BITS 8
           
-          # Bluetooth VHCI, HCI USB, UART, RFCOMM, BNEP & HIDP
-          ./scripts/config --file out/.config \
-            -e BT -e BT_RFCOMM -e BT_RFCOMM_TTY -e BT_BNEP -e BT_BNEP_MC_FILTER \
-            -e BT_BNEP_PROTO_FILTER -e BT_HIDP -e BT_HS -e BT_LE \
-            -e BT_HCIVHCI -e BT_HCIBTUSB -e BT_HCIUART -e BT_HCIUART_H4 \
-            -e BT_HCIUART_BCSP -e BT_HCIUART_ATH3K -e BT_HCIUART_LL -e BT_HCIUART_3WIRE
+          ./scripts/config --file out/.config -e NF_TABLES -e NF_TABLES_INET -e NF_TABLES_NETDEV -e NFT_NUMGEN -e NFT_CT -e NFT_COUNTER -e NFT_CONNLIMIT -e NFT_LOG -e NFT_LIMIT -e NFT_MASQ -e NFT_REDIR -e NFT_NAT -e NFT_TUNNEL -e NFT_OBJREF -e NFT_QUEUE -e NFT_QUOTA -e NFT_REJECT -e NFT_REJECT_INET -e NFT_COMPAT -e NFT_HASH -e NFT_FIB -e NFT_FIB_IPV4 -e NFT_FIB_IPV6 -e NFT_FIB_INET
           
-          # CAN-Bus Automotive Protocol Family
-          ./scripts/config --file out/.config \
-            -e CAN -e CAN_RAW -e CAN_BCM -e CAN_GW -e CAN_VCAN -e CAN_SLCAN \
-            -e CAN_DEV -e CAN_CALC_BITTIMING
+          ./scripts/config --file out/.config -e USER_NS -e CFQ_GROUP_IOSCHED -e BLK_DEV_THROTTLING -e CGROUP_PERF -e CGROUP_HUGETLB -e CGROUP_NET_PRIO -e NET_SCTP -e SECURITY_APPARMOR -e NAMESPACES -e UTS_NS -e IPC_NS -e PID_NS -e NET_NS -e CGROUPS -e CGROUP_CPUACCT -e CGROUP_DEVICE -e CGROUP_FREEZER -e CGROUP_SCHED -e CPUSETS -e MEMCG -e OVERLAY_FS -e NETFILTER_XT_MARK -e IP_NF_FILTER
           
-          # Docker Engine Network Bridge, Veth, OverlayFS & Namespaces
-          ./scripts/config --file out/.config \
-            -e NAMESPACES -e UTS_NS -e IPC_NS -e USER_NS -e PID_NS -e NET_NS \
-            -e CGROUPS -e CGROUP_CPUACCT -e CGROUP_DEVICE -e CGROUP_FREEZER -e CGROUP_SCHED -e CPUSETS -e MEMCG \
-            -e BRIDGE -e VETH -e MACVLAN -e TAP -e TUN -e OVERLAY_FS \
-            -e NETFILTER_XT_MARK -e IP_NF_FILTER -e IP_NF_TARGET_MASQUERADE \
-            -e ATH9K_HTC -e RTL8187 -e RTL8812AU -e RTL88XXAU -e RTL88X2BU -e CFG80211 \
-            --set-str LOCALVERSION "-Laksanasoft-NH-v2.3-ExactDTB"
+          ./scripts/config --file out/.config -e USB_CONFIGFS -e USB_CONFIGFS_UEVENT -e USB_CONFIGFS_F_FS -e USB_CONFIGFS_F_ACC -e USB_CONFIGFS_F_AUDIO_SRC -e USB_CONFIGFS_F_MIDI -e USB_CONFIGFS_F_HID -e USB_CONFIGFS_F_UVC -e USB_CONFIGFS_F_RNDIS -e USB_CONFIGFS_F_EEM -e USB_CONFIGFS_F_SUBSUB -e USB_CONFIGFS_F_MTP -e USB_CONFIGFS_F_PTP -e USB_CONFIGFS_F_OBEX -e USB_CONFIGFS_F_NCM -e USB_CONFIGFS_F_ECM -e USB_CONFIGFS_F_ECM_SUBSET -e USB_CONFIGFS_F_MASS_STORAGE -e USB_G_HID -e USB_F_HID -e USB_CHARDEV -e USB_F_MASS_STORAGE
           
-          make O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- olddefconfig
+          ./scripts/config --file out/.config -e WIRELESS -e CFG80211 -e NL80211_TESTMODE -e CFG80211_DEVELOPER_WARNINGS -e CFG80211_CERTIFICATION_ONUS -e CFG80211_REG_CELLULAR_HINTS -e CFG80211_REG_RELAX_NO_IR -e CFG80211_DEFAULT_PS -e CFG80211_INTERNAL_REGDB -e MAC80211 -e MAC80211_HAS_RC -e MAC80211_RC_MINSTREL -e MAC80211_RC_MINSTREL_HT -e MAC80211_RC_MINSTREL_VHT -e MAC80211_RC_DEFAULT_MINSTREL -e MAC80211_MESH -e MAC80211_LEDS -e MAC80211_MESSAGE_TRACING -e MAC80211_DEBUG_MENU
+          ./scripts/config --file out/.config --set-str MAC80211_RC_DEFAULT "minstrel_ht"
+          
+          ./scripts/config --file out/.config -m RTL8187 -m RTL8192CU -m RTL8XXXU -m RTL8812AU -m RTL88XXAU -m RTL88X2BU
+          ./scripts/config --file out/.config -e RTL8XXXU_UNTESTED
+          
+          ./scripts/config --file out/.config -m RT2X00 -m RT2500USB -m RT73USB -m RT2800USB
+          ./scripts/config --file out/.config -e RT2800USB_RT33XX -e RT2800USB_RT35XX -e RT2800USB_RT3573 -e RT2800USB_RT53XX -e RT2800USB_RT55XX -e RT2800USB_UNKNOWN
+          
+          ./scripts/config --file out/.config -m ATH_CARDS -m ATH9K_HTC -m CARL9170
+          ./scripts/config --file out/.config -e ATH9K_HTC_DEBUGFS -e CARL9170_LEDS -e CARL9170_WDF -e CARL9170_HWRNG -e ATH9K
+          
+          ./scripts/config --file out/.config -e BT -e BT_RFCOMM -e BT_RFCOMM_TTY -e BT_BNEP -e BT_BNEP_MC_FILTER -e BT_BNEP_PROTO_FILTER -e BT_HIDP -e BT_HS -e BT_LE -e BT_HCIBTUSB_BCM -e BT_HCIBTUSB_RTL
+          ./scripts/config --file out/.config -m BT_HCIBTUSB -m BT_HCIBTUART -m BT_HCIBCM203X -m BT_HCIBPA10X -m BT_HCIBFUSB -m BT_HCIVHCI -m BT_MRVL -m BT_ATH3K
+          
+          ./scripts/config --file out/.config -e EXT4_FS -e EXT4_FS_POSIX_ACL -e EXT4_FS_SECURITY -e BTRFS_FS -e BTRFS_FS_POSIX_ACL -e ISO9660_FS -e UDF_FS -e MSDOS_FS -e VFAT_FS -e NTFS_FS -e NTFS_RW -e FUSE_FS -e CUSE -e BLK_DEV_LOOP -e MINIX_FS -e SQUASHFS
+          ./scripts/config --file out/.config --set-val FAT_DEFAULT_CODEPAGE 437
+          ./scripts/config --file out/.config --set-str FAT_DEFAULT_IOCHARSET "iso8859-1"
+          
+          ./scripts/config --file out/.config -e CAN -e CAN_RAW -e CAN_BCM -e CAN_GW -e CAN_VCAN -e CAN_SLCAN -e CAN_DEV -e CAN_CALC_BITTIMING
+          ./scripts/config --file out/.config -e BPF -e BPF_SYSCALL -e CGROUP_BPF -e NET_CLS_BPF -e NET_ACT_BPF -e BPF_JIT
+          ./scripts/config --file out/.config -e TCP_CONG_BBR -e DEFAULT_BBR -e NET_SCH_FQ -e NET_SCH_FQ_CODEL -e IP_ADVANCED_ROUTER -e IP_MULTIPLE_TABLES
+          ./scripts/config --file out/.config -e MEDIA_SUPPORT -e MEDIA_USB_SUPPORT -e MEDIA_SDR_SUPPORT -e MEDIA_DIGITAL_TV_SUPPORT
+          ./scripts/config --file out/.config -e NFS_FS -e NFS_V3 -e NFS_V4 -e ROOT_NFS
+          ./scripts/config --file out/.config -e USB_SERIAL -e USB_SERIAL_CONSOLE -e USB_SERIAL_FTDI_SIO -e USB_SERIAL_PL2303 -e USB_SERIAL_CH341 -e USB_SERIAL_CP210X -e USB_ACM -e USB_RTL28XXU -e USB_HACKRF -e USB_WDM -e USB_NET_QMI_WWAN -e I2C_CHARDEV -e SPI_SPIDEV
+          
+          ./scripts/config --file out/.config -e FS_ENCRYPTION -e EXT4_ENCRYPTION -e F2FS_FS_ENCRYPTION -e F2FS_FS_SECURITY
+          ./scripts/config --file out/.config -e MD -e BLK_DEV_MD -e BLK_DEV_RO -e DM_CRYPT -e DM_SNAPSHOT -e DM_VERITY -e DM_VERITY_FEC -e DM_INTEGRITY
+          ./scripts/config --file out/.config -e WIREGUARD -e CRYPTO_ALGAPI -e CRYPTO_BLKCIPHER -e CRYPTO_HASH -e CRYPTO_MANAGER
+          ./scripts/config --file out/.config -e CRYPTO_AES -e CRYPTO_AES_ARM64_CE -e CRYPTO_XTS -e CRYPTO_CBC -e CRYPTO_CTR -e CRYPTO_ECB -e CRYPTO_GCM
+          ./scripts/config --file out/.config -e CRYPTO_SHA256 -e CRYPTO_SHA512 -e CRYPTO_SHA2_ARM64_CE -e CRYPTO_GHASH_ARM64_CE
+          ./scripts/config --file out/.config -e CRYPTO_CHACHA20 -e CRYPTO_POLY1305 -e CRYPTO_CHACHA20POLY1305 -e CRYPTO_SERPENT -e CRYPTO_TWOFISH -e CRYPTO_BLOWFISH -e CRYPTO_CAST6 -e CRYPTO_CAMELLIA
+          ./scripts/config --file out/.config -e CRYPTO_USER_API -e CRYPTO_USER_API_HASH -e CRYPTO_USER_API_SKCIPHER -e CRYPTO_USER_API_AEAD
+          
+          ./scripts/config --file out/.config --set-str LOCALVERSION "-Laksanasoft-NetHunter-Enterprise-v3.0"
+          
+          make O=out ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 LLVM_IAS=1 olddefconfig
 
-      - name: 🔨 Compile Exact beyond2lte DTB & Image.gz (~18MB Payload)
+      - name: Compile NetHunter Kernel & DTB & Modules
         run: |
           cd kernel
           export CLANG_PATH="$(pwd)/../clang/bin"
-          make -j$(nproc --all) O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- KCFLAGS="-Wno-error" Image.gz dtbs
+          export PATH="$CLANG_PATH:$PATH"
           
-          # Extract ONLY the single exact beyond2lte DTB to prevent multi-DTB table corruption
-          EXYNOS_DTB=$(find out/arch/arm64/boot/dts/exynos/ -name "*beyond2lte*.dtb" | head -n 1)
-          if [ -f "$EXYNOS_DTB" ]; then
-            echo "Found exact hardware DTB: $EXYNOS_DTB"
-            cp "$EXYNOS_DTB" out/arch/arm64/boot/dtb
-          else
-            cat out/arch/arm64/boot/dts/exynos/*.dtb > out/arch/arm64/boot/dtb || true
+          make -j$(nproc --all) O=out ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 LLVM_IAS=1 KCFLAGS="-Wno-error" KBUILD_BUILD_USER="nethunter" KBUILD_BUILD_HOST="enterprise" Image.gz dtbs modules
+          
+          if [ -d "out/arch/arm64/boot/dts/exynos" ]; then
+            cat out/arch/arm64/boot/dts/exynos/*.dtb > out/arch/arm64/boot/dtb || true 
+          elif [ -d "out/arch/arm64/boot/dts" ]; then
+            cat out/arch/arm64/boot/dts/*.dtb > out/arch/arm64/boot/dtb || true
           fi
-
+          
           if [ -f "out/arch/arm64/boot/Image.gz" ] && [ -f "out/arch/arm64/boot/dtb" ]; then
             cat out/arch/arm64/boot/Image.gz out/arch/arm64/boot/dtb > out/arch/arm64/boot/Image.gz-dtb
           fi
 
-      - name: 📦 Package Exact NetHunter Enterprise Kernel (Image.gz-dtb)
+      - name: Package NetHunter Enterprise Kernel
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
+          
           if [ -f "kernel/out/arch/arm64/boot/Image.gz-dtb" ]; then
             cp kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
           elif [ -f "kernel/out/arch/arm64/boot/Image.gz" ]; then
             cp kernel/out/arch/arm64/boot/Image.gz AnyKernel3/
           fi
+          
           if [ -f "kernel/out/arch/arm64/boot/dtb" ]; then
             cp kernel/out/arch/arm64/boot/dtb AnyKernel3/
           fi
-          cd AnyKernel3
-          sed -i 's/device.name1=maguro/device.name1=beyond2lte/' anykernel.sh
-          sed -i 's/device.name2=toro/device.name2=beyond2/' anykernel.sh
-          sed -i 's|BLOCK=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot;|if [ -b /dev/block/by-name/boot ]; then BLOCK=/dev/block/by-name/boot; elif [ -b /dev/block/sda14 ]; then BLOCK=/dev/block/sda14; else BLOCK=auto; fi;|' anykernel.sh
-          sed -i 's/do.devicecheck=1/do.devicecheck=0/' anykernel.sh
           
-          zip -r9 ../NetHunter-Kernel-Native-Linux-Kexec.zip *
+          mkdir -p AnyKernel3/modules/vendor/lib/modules
+          find kernel/out -name "*.ko" -exec cp {} AnyKernel3/modules/vendor/lib/modules/ \;
+          
+          cd AnyKernel3
+          
+          sed -i 's/is_slot_device=.*/is_slot_device=0/g' anykernel.sh
+          sed -i 's/device.name1=.*/device.name1=beyond2lte/g' anykernel.sh
+          sed -i 's/device.name2=.*/device.name2=beyond2/g' anykernel.sh
+          sed -i 's/device.name3=.*/device.name3=beyond2q/g' anykernel.sh
+          sed -i 's/device.name4=.*/device.name4=beyond2qlte/g' anykernel.sh
+          sed -i 's/device.name5=.*/device.name5=exynos9820/g' anykernel.sh
+          
+          zip -r9 ../NetHunter-Enterprise-ALL-FEATURES.zip *
 
-      - name: 🚀 Upload Kernel Artifact
+      - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: NetHunter-Kernel-Native-Linux-Kexec
-          path: NetHunter-Kernel-Native-Linux-Kexec.zip
+          name: NetHunter-Enterprise-ALL-FEATURES
+          path: NetHunter-Enterprise-ALL-FEATURES.zip
