@@ -1,4 +1,4 @@
-name: Build NetHunter Kernel S10+
+name: Build NetHunter Kernel S10+ Global
 
 on:
   workflow_dispatch: # Menjalankan manual dari tab Actions
@@ -20,29 +20,30 @@ jobs:
       run: |
         git clone --recurse-submodules https://github.com/V0lk3n/nethunter_kernel_samsung_exynos9820.git -b nethunter-lineage-23.2 kernel-src
 
-    - name: Siapkan Konfigurasi & Jalankan Build
+    - name: Konfigurasi Spesifik S10+ Global (beyond2lte)
       run: |
         cd kernel-src/kali-nethunter-kernel-builder
         
-        # Cek ketersediaan local.config, buat fallback jika kosong
-        if [ -f ../nh_files/local.config ]; then
-          cp ../nh_files/local.config .
-        else
-          echo "Membuat local.config otomatis..."
-          echo "ARCH=arm64" > local.config
-          echo "SUBARCH=arm64" >> local.config
-        fi
+        # 1. Membuat file local.config khusus untuk target S10+ Beyond2lte
+        echo "ARCH=arm64" > local.config
+        echo "SUBARCH=arm64" >> local.config
         
-        # Bypass prompt interaktif menu build
+        # 2. Mengarahkan DEVICE ke codename S10+ dan defconfig nethunter yang sesuai
+        echo "DEVICE=beyond2lte" >> local.config
+        echo "DEFCONFIG=nethunter_beyond2lte_defconfig" >> local.config
+
+    - name: Jalankan Build Kernel
+      run: |
+        cd kernel-src/kali-nethunter-kernel-builder
         chmod +x build.sh
-        echo "1" | ./build.sh || ./build.sh --non-interactive || true
+        # Eksekusi otomatis tanpa dialog interaktif menu perangkat
+        ./build.sh --non-interactive
 
     - name: Unggah Hasil Build (Artifact)
       uses: actions/upload-artifact@v4
       with:
-        name: NetHunter-Kernel-S10-Plus
+        name: NetHunter-Kernel-S10Plus-Global
         path: |
           kernel-src/kali-nethunter-kernel-builder/out/*
           kernel-src/kali-nethunter-kernel-builder/*.zip
           kernel-src/kali-nethunter-kernel-builder/*.img
-          kernel-src/out/*
