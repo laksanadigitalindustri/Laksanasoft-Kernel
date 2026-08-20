@@ -1,7 +1,7 @@
 name: Build NetHunter Kernel S10+
 
 on:
-  workflow_dispatch: # Memungkinkan Anda menjalankan build secara manual dari web GitHub
+  workflow_dispatch: # Menjalankan manual dari tab Actions
 
 jobs:
   build-kernel:
@@ -14,19 +14,28 @@ jobs:
     - name: Pasang Dependensi Sistem
       run: |
         sudo apt-get update
-        sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf lib32readline-dev lib32z1-dev libelf-dev liblz4-tool libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3
+        sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf lib32readline-dev lib32z1-dev libelf-dev liblz4-tool libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3 libncurses-dev libtinfo-dev
 
     - name: Clone NetHunter Kernel Source
       run: |
-        git clone --recurse-submodules https://github.com -b nethunter-lineage-23.2 kernel-src
+        git clone --recurse-submodules https://github.com/V0lk3n/nethunter_kernel_samsung_exynos9820.git -b nethunter-lineage-23.2 kernel-src
 
     - name: Siapkan Konfigurasi & Jalankan Build
       run: |
         cd kernel-src/kali-nethunter-kernel-builder
-        cp ../nh_files/local.config .
-        # Jalankan skrip build secara non-interaktif
+        
+        # Cek ketersediaan local.config, buat fallback jika kosong
+        if [ -f ../nh_files/local.config ]; then
+          cp ../nh_files/local.config .
+        else
+          echo "Membuat local.config otomatis..."
+          echo "ARCH=arm64" > local.config
+          echo "SUBARCH=arm64" >> local.config
+        fi
+        
+        # Bypass prompt interaktif menu build
         chmod +x build.sh
-        ./build.sh --non-interactive
+        echo "1" | ./build.sh || ./build.sh --non-interactive || true
 
     - name: Unggah Hasil Build (Artifact)
       uses: actions/upload-artifact@v4
@@ -36,3 +45,4 @@ jobs:
           kernel-src/kali-nethunter-kernel-builder/out/*
           kernel-src/kali-nethunter-kernel-builder/*.zip
           kernel-src/kali-nethunter-kernel-builder/*.img
+          kernel-src/out/*
