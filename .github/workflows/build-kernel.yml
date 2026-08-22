@@ -1,55 +1,65 @@
-name: Build Laksanasoft Kernel (Final Stable)
+# ==============================================================================
+# NAMA FILE: build-kernel.yml
+# FUNGSI: Konfigurasi GitHub Actions untuk kompilasi otomatis Laksanasoft Kernel
+# KEAMANAN: Memastikan dependensi ditarik via jalur aman (HTTPS), isolasi artefak.
+# OPTIMASI: Seluruh karakter spasi non-breaking yang merusak YAML parser telah 
+#           dibersihkan dan diganti dengan indentasi spasi murni 2-blok standar.
+# ==============================================================================
 
-on:
-  workflow_dispatch:
+name: Build Laksanasoft Kernel (Final Stable) # Menentukan nama alur kerja (workflow) yang akan muncul di dashboard Actions GitHub
 
-jobs:
-  build:
-    runs-on: ubuntu-22.04
+on: # Mendefinisikan kapan (pemicu) workflow ini akan dijalankan oleh sistem
+  workflow_dispatch: # Mengaktifkan eksekusi manual sehingga Anda bisa memicu build langsung dari tombol "Run workflow" di UI GitHub
 
-    steps:
-      - name: 🧹 Clean Workspace & Prepare Disk Space
-        uses: actions/checkout@v4
+jobs: # Membuka blok daftar pekerjaan (jobs) yang akan dikerjakan pada workflow ini
+  build: # Membuat satu job bernama "build"
+    runs-on: ubuntu-22.04 # Menentukan bahwa proses ini akan berjalan pada mesin virtual sistem operasi Ubuntu 22.04
 
-      - name: 📦 Install Build Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential bc bison flex libssl-dev libncurses5-dev \
-            libncurses-dev libelf-dev zip unzip curl git ccache \
-            lzop libssl-dev python3 python2 crossbuild-essential-arm64
+    steps: # Membuka blok untuk urutan langkah-langkah yang akan dieksekusi secara berurutan
+      - name: 🧹 Clean Workspace & Prepare Disk Space # Nama langkah pertama: Menyiapkan environment
+        uses: actions/checkout@v4 # Menggunakan modul resmi GitHub untuk mengambil kontrol dan mengatur workspace menjadi direktori yang bersih
 
-      - name: 📥 Clone Toolchain (AOSP Clang & GCC Cross-Compilers)
-        run: |
+      - name: 📦 Install Build Dependencies # Nama langkah instalasi pustaka
+        run: | # Tanda pipe (|) memungkinkan kita menulis banyak baris perintah shell ke bawah
+          sudo apt-get update # Memperbarui daftar paket dari repositori sistem Ubuntu
+          # Menginstal kompiler C/C++, pustaka kompresi, alat build (make, bison, flex), serta kompiler silang (cross-compiler) untuk ARM64
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libncurses5-dev libncurses-dev libelf-dev zip unzip curl git ccache lzop libssl-dev python3 python2 crossbuild-essential-arm64
+
+      - name: 📥 Clone Toolchain (AOSP Clang & GCC Cross-Compilers) # Nama langkah mengunduh kompiler Google
+        run: | # Memulai blok shell script
+          # Mengunduh Clang khusus Android dari repositori Google dengan riwayat commit minimal (depth=1) agar pengunduhan lebih cepat
           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 clang
+          # Mengunduh GCC 64-bit berbasis aarch64 untuk menerjemahkan instruksi bahasa C ke mesin HP
           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 gcc64
+          # Mengunduh GCC 32-bit (ARM) karena sebagian instruksi low-level Linux kernel lawas masih membutuhkan kompatibilitas ARM 32-bit
           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 gcc32
 
-      - name: 📥 Clone Kernel Source
-        run: |
+      - name: 📥 Clone Kernel Source # Nama langkah mengunduh kode sumber kernel
+        run: | # Memulai blok shell script
+          # Mengunduh repositori kernel spesifik Laksanasoft dari cabang (branch) 'main' dan menempatkannya ke dalam folder bernama 'kernel'
           git clone --depth=1 https://github.com/Laksanasoft-Kernel/Laksanasoft-Kernel.git -b main kernel
 
-      - name: ⚙️ Configure Safe Built-In Drivers & Fix Broken Subsystems
-        run: |
-          cd kernel
-          mkdir -p out
-          export CLANG_PATH="$(pwd)/../clang/bin"
+      - name: ⚙️ Configure Safe Built-In Drivers & Fix Broken Subsystems # Nama langkah konfigurasi dan patch kernel
+        run: | # Memulai blok shell script
+          cd kernel # Masuk ke dalam direktori kernel yang baru saja di-clone
+          mkdir -p out # Membuat folder 'out' untuk menampung file objek hasil kompilasi agar source tidak bercampur (menjaga clean tree)
+          export CLANG_PATH="$(pwd)/../clang/bin" # Membuat variabel lingkungan (path absolut) menuju folder binari Clang
           
-          # Terapkan Defconfig Resmi Samsung Exynos 9820 (beyond2lte / S10+)
+          # Menyiapkan konfigurasi dasar (blueprint) kernel menggunakan preset khusus untuk Exynos 9820 (Galaxy S10+)
           make O=out ARCH=arm64 CC=$CLANG_PATH/clang exynos9820-beyond2lte_defconfig
-
-          # Disable Subsistem Cacat/Penyebab Syntax Error
+          
+          # Menonaktifkan modul SquashFS secara eksplisit untuk mencegah error dependensi kompilasi
           ./scripts/config --file out/.config -d CONFIG_SQUASHFS
-
-          # Enable Driver Jaringan USB & Tethering (Built-In)
+          
+          # Mengaktifkan serangkaian modul driver agar HP bisa membaca adapter LAN/Wi-Fi via USB (Berguna untuk NetHunter/Tethering)
           ./scripts/config --file out/.config -e CONFIG_USB_NET_DRIVERS
           ./scripts/config --file out/.config -e CONFIG_USB_RTL8152
           ./scripts/config --file out/.config -e CONFIG_USB_USBNET
           ./scripts/config --file out/.config -e CONFIG_USB_NET_CDCETHER
           ./scripts/config --file out/.config -e CONFIG_USB_NET_CDC_NCM
           ./scripts/config --file out/.config -e CONFIG_USB_NET_RNDIS_HOST
-
-          # Enable Driver CAN-Bus (Built-In)
+          
+          # Mengaktifkan sistem arsitektur CAN bus yang krusial untuk analisis/injeksi jaringan perangkat keras keras (hacking otomotif)
           ./scripts/config --file out/.config -e CONFIG_CAN
           ./scripts/config --file out/.config -e CONFIG_CAN_RAW
           ./scripts/config --file out/.config -e CONFIG_CAN_BCM
@@ -59,52 +69,46 @@ jobs:
           ./scripts/config --file out/.config -e CONFIG_CAN_DEV
           ./scripts/config --file out/.config -e CONFIG_CAN_CALC_BITTIMING
           ./scripts/config --file out/.config -e CONFIG_CAN_USB
-
-          # Enable Security & VPN Features
+          
+          # Mengaktifkan protokol VPN WireGuard bawaan kernel dan sistem keamanan dinding api (firewall iptables)
           ./scripts/config --file out/.config -e CONFIG_WIREGUARD
           ./scripts/config --file out/.config -e CONFIG_NETFILTER
           ./scripts/config --file out/.config -e CONFIG_IP_NF_IPTABLES
-
-          # Disable Modul Out-Of-Tree Eksternal Penyebab Conflict Linker (RTL88xx)
+          
+          # Mematikan (disable) driver kustom Realtek yang belum disesuaikan jalurnya (Out-Of-Tree) agar build tidak crash
           ./scripts/config --file out/.config -d CONFIG_RTL8812AU
           ./scripts/config --file out/.config -d CONFIG_RTL88XXAU
-
-          # Sinkronisasi ulang dependensi
-          make O=out ARCH=arm64 CC=$CLANG_PATH/clang \
-            CROSS_COMPILE="$(pwd)/../gcc64/bin/aarch64-linux-android-" \
-            CROSS_COMPILE_ARM32="$(pwd)/../gcc32/bin/arm-linux-androideabi-" olddefconfig
-
-      - name: 🔨 Compile Kernel Image
-        run: |
-          cd kernel
-          export CLANG_PATH="$(pwd)/../clang/bin"
-          export GCC64_PATH="$(pwd)/../gcc64/bin"
-          export GCC32_PATH="$(pwd)/../gcc32/bin"
           
-          # Eksekusi kompilasi dengan penanganan kesalahan otomatis (-j1 pada pembongkaran error)
-          make -j$(nproc --all) O=out ARCH=arm64 CC=$CLANG_PATH/clang \
-            CLANG_TRIPLE=aarch64-linux-gnu- \
-            CROSS_COMPILE=$GCC64_PATH/aarch64-linux-android- \
-            CROSS_COMPILE_ARM32=$GCC32_PATH/arm-linux-androideabi- || \
-          make -j1 V=1 O=out ARCH=arm64 CC=$CLANG_PATH/clang \
-            CLANG_TRIPLE=aarch64-linux-gnu- \
-            CROSS_COMPILE=$GCC64_PATH/aarch64-linux-android- \
-            CROSS_COMPILE_ARM32=$GCC32_PATH/arm-linux-androideabi-
+          # Menerapkan ulang dan memvalidasi file .config yang sudah diedit agar semua rantai dependensi tersambung sebelum kompilasi (olddefconfig)
+          make O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE="$(pwd)/../gcc64/bin/aarch64-linux-android-" CROSS_COMPILE_ARM32="$(pwd)/../gcc32/bin/arm-linux-androideabi-" olddefconfig
 
-      - name: 📦 Package Output Artifacts
-        run: |
-          cd kernel/out/arch/arm64/boot
-          mkdir -p ../../../../../build_output
-          if [ -f Image.gz-dtb ]; then
-            cp Image.gz-dtb ../../../../../build_output/
-          elif [ -f Image.gz ]; then
-            cp Image.gz ../../../../../build_output/
-          elif [ -f Image ]; then
-            cp Image ../../../../../build_output/
-          fi
+      - name: 🔨 Compile Kernel Image # Nama langkah kompilasi inti
+        run: | # Memulai blok shell script
+          cd kernel # Memasuki kembali direktori kernel
+          export CLANG_PATH="$(pwd)/../clang/bin" # Mendefinisikan ulang path Clang karena shell sebelumnya sudah tertutup (stateless)
+          export GCC64_PATH="$(pwd)/../gcc64/bin" # Mendefinisikan ulang path GCC arsitektur 64-bit
+          export GCC32_PATH="$(pwd)/../gcc32/bin" # Mendefinisikan ulang path GCC arsitektur 32-bit
+          
+          # Menjalankan perintah 'make' menggunakan seluruh core CPU yang tersedia di server GitHub (-j$(nproc --all)) agar kompilasi maksimal.
+          # Logika || (OR): Jika kompilasi multi-core gagal/crash (biasanya menyembunyikan detail error), sistem akan memicu ulang build.
+          # Build ulang menggunakan (-j1 V=1) yang artinya menggunakan 1 core secara perlahan dengan rincian (Verbose=1) agar log error tercetak jelas.
+          make -j$(nproc --all) O=out ARCH=arm64 CC=$CLANG_PATH/clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=$GCC64_PATH/aarch64-linux-android- CROSS_COMPILE_ARM32=$GCC32_PATH/arm-linux-androideabi- || make -j1 V=1 O=out ARCH=arm64 CC=$CLANG_PATH/clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=$GCC64_PATH/aarch64-linux-android- CROSS_COMPILE_ARM32=$GCC32_PATH/arm-linux-androideabi-
 
-      - name: 📤 Upload Kernel Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Laksanasoft-Kernel-Exynos9820
-          path: build_output/*
+      - name: 📦 Package Output Artifacts # Nama langkah untuk menyortir dan mengambil file jadi
+        run: | # Memulai blok shell script
+          cd kernel/out/arch/arm64/boot # Berpindah ke direktori terdalam tempat Linux meletakkan file Kernel Image yang sudah berhasil dirakit
+          mkdir -p ../../../../../build_output # Membuat folder baru bernama build_output di lokasi paling depan (root) untuk kemudahan akses
+          # Struktur kontrol if-elif untuk mengecek varian file Kernel apa yang berhasil digenerate oleh sistem (tergantung dari setelan boot HP)
+          if [ -f Image.gz-dtb ]; then # Jika file terkompresi dengan Device Tree Blob (dtb) ditemukan
+            cp Image.gz-dtb ../../../../../build_output/ # Salin file tersebut ke folder output
+          elif [ -f Image.gz ]; then # Sebaliknya, jika hanya file terkompresi biasa yang ditemukan
+            cp Image.gz ../../../../../build_output/ # Salin file tersebut ke folder output
+          elif [ -f Image ]; then # Terakhir, jika formatnya hanya file raw Image tanpa kompresi
+            cp Image ../../../../../build_output/ # Salin file tersebut ke folder output
+          fi # Menutup blok pengecekan kondisi
+
+      - name: 📤 Upload Kernel Artifact # Nama langkah terakhir (pengunggahan hasil ke web)
+        uses: actions/upload-artifact@v4 # Memanggil fitur Action standar GitHub untuk membuat file ZIP yang bisa di-download oleh pengguna
+        with: # Mengirim variabel (parameter) kepada fitur unggah
+          name: Laksanasoft-Kernel-Exynos9820 # Nama dari file berformat .zip yang akan muncul pada menu Artifact di ringkasan GitHub Actions
+          path: build_output/* # Menentukan bahwa seluruh isi di dalam direktori build_output wajib dimasukkan ke dalam paket unggahan
