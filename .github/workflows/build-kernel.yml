@@ -1,52 +1,136 @@
-name: Build NetHunter Kernel S10+ Global Fixed
+name: Build NetHunter Enterprise Ultra-Monolithic Kernel (S10+ Global)
 
 on:
   workflow_dispatch:
 
 jobs:
-  build-kernel:
+  build:
+    name: Compile Enterprise Ultra-Kernel (S10+ Exynos9820)
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v4
+      - name: 🛠️ Setup Build Environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential curl flex git gnupg gperf \
+            liblz4-tool libncurses5-dev libssl-dev lzop rsync zip python3 \
+            gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-    - name: Pasang Dependensi Sistem
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf lib32readline-dev lib32z1-dev libelf-dev liblz4-tool libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3 libncurses-dev libtinfo-dev libssl-dev
+      - name: 📥 Clone Toolchain (Proton Clang)
+        run: |
+          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
 
-    - name: Clone NetHunter Kernel Source (Link Diperbaiki)
-      run: |
-        # Menggunakan tautan utuh yang benar ke repositori V0lk3n
-        git clone --recurse-submodules https://github.com/V0lk3n/nethunter_kernel_samsung_exynos9820.git -b nethunter-lineage-23.2 kernel-src
+      - name: 📥 Clone Official Kernel Source (v0lk3n nethunter-lineage-23.2)
+        run: |
+          git clone --recurse-submodules https://github.com/v0lk3n/nethunter_kernel_samsung_exynos9820.git -b nethunter-lineage-23.2 kernel
 
-    - name: Siapkan Konfigurasi S10+ (beyond2lte)
-      run: |
-        cd kernel-src/kali-nethunter-kernel-builder
-        
-        # Menggunakan local.config asli dari repositori V0lk3n
-        cp ../nh_files/local.config .
-        
-        # Memastikan target perangkat mengarah ke S10+ versi Global (beyond2lte)
-        sed -i 's/DEVICE=.*/DEVICE=beyond2lte/g' local.config
-        sed -i 's/DEFCONFIG=.*/DEFCONFIG=nethunter_beyond2lte_defconfig/g' local.config
+      - name: ⚙️ Auto-Inject Ultra-Monolithic Configurations
+        run: |
+          cd kernel
+          export ARCH=arm64
+          export CLANG_PATH="$(pwd)/../clang/bin"
 
-    - name: Jalankan Build Kernel Otomatis
-      run: |
-        cd kernel-src/kali-nethunter-kernel-builder
-        chmod +x build.sh
-        
-        # Mengirimkan opsi otomatis secara berurutan:
-        # 'S' untuk mengunduh dan menyiapkan toolchain compiler bawaan
-        # 'N' untuk memulai kompilasi NetHunter penuh dan membungkus hasil ZIP
-        # 'E' untuk menutup menu setelah selesai
-        printf "S\nN\nE\n" | ./build.sh
+          DEFCONFIG="exynos9820-beyond2lte_defconfig"
+          if [ ! -f "arch/arm64/configs/$DEFCONFIG" ]; then
+            DEFCONFIG=$(ls arch/arm64/configs/ | grep beyond2lte | head -n 1)
+          fi
 
-    - name: Unggah Hasil Kernel Jadi
-      uses: actions/upload-artifact@v4
-      with:
-        name: NetHunter-Kernel-S10Plus-Global
-        path: |
-          kernel-src/kali-nethunter-kernel-builder/out/*
-          kernel-src/kali-nethunter-kernel-builder/*.zip
+          make O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- $DEFCONFIG
+
+          # =========================================================================
+          # 1. APATCH / KERNELPATCH COMPATIBILITY & BASE STABILITY
+          # =========================================================================
+          ./scripts/config --file out/.config -d CFI_CLANG -d CFI_PERMISSIVE -d SHADOW_CALL_STACK
+          ./scripts/config --file out/.config -e MALI_B_KBASE -e BCMDHD
+
+          # =========================================================================
+          # 2. ETHICAL HACKING & WIRELESS RF SUITE (MONOLITHIC =y)
+          # =========================================================================
+          ./scripts/config --file out/.config \
+            -e BT -e BT_RFCOMM -e BT_RFCOMM_TTY -e BT_BNEP -e BT_BNEP_MC_FILTER \
+            -e BT_BNEP_PROTO_FILTER -e BT_HIDP -e BT_HS -e BT_LE \
+            -e BT_HCIVHCI -e BT_HCIBTUSB -e BT_HCIUART -e BT_HCIUART_H4 -e BT_HCIUART_BCSP \
+            -e DVB_RTL2832 -e USB_AIRSPY -e USB_HACKRF \
+            -e ATH9K_HTC -e RTL8187 -e RTL8812AU -e RTL88XXAU -e RTL88X2BU -e RTL8192CU -e CFG80211 \
+            -e USB_CONFIGFS_F_HID -e USB_G_HID -e USB_F_MASS_STORAGE
+
+          # =========================================================================
+          # 3. AUTOMOTIVE, SERIAL & PHYSICAL AUDITING
+          # =========================================================================
+          ./scripts/config --file out/.config \
+            -e CAN -e CAN_RAW -e CAN_BCM -e CAN_GW -e CAN_VCAN -e CAN_SLCAN -e CAN_DEV -e CAN_CALC_BITTIMING \
+            -e CAN_MCP251X -e CAN_USB_8DEV -e CAN_EMS_USB -e CAN_ESD_USB2 \
+            -e USB_SERIAL -e USB_SERIAL_FTDI_SIO -e USB_SERIAL_PL2303 -e USB_SERIAL_CP210X -e USB_SERIAL_CH341 \
+            -e USB_NET_AX88179_178A -e USB_NET_RTL8152 -e USB_NET_RTL8150 -e USB_NET_CDCETHER
+
+          # =========================================================================
+          # 4. ADVANCED CRYPTOGRAPHY & ENCRYPTION ENGINE (LUKS / VERACRYPT)
+          # =========================================================================
+          ./scripts/config --file out/.config \
+            -e CRYPTO_AES -e CRYPTO_XTS -e CRYPTO_CBC -e CRYPTO_CTR -e CRYPTO_GCM \
+            -e CRYPTO_CHACHA20POLY1305 -e CRYPTO_SERPENT -e CRYPTO_TWOFISH -e CRYPTO_BLOWFISH \
+            -e CRYPTO_SHA256 -e CRYPTO_SHA512 -e CRYPTO_SHA3 -e CRYPTO_BLAKE2B \
+            -e BLK_DEV_DM -e DM_CRYPT -e BLK_DEV_LOOP -e BLK_DEV_CRYPTOLOOP
+
+          # =========================================================================
+          # 5. UNIVERSAL FILE SYSTEM SUITE (NTFS3, BTRFS, XFS, EXFAT)
+          # =========================================================================
+          ./scripts/config --file out/.config \
+            -e EXT4_FS -e F2FS_FS -e BTRFS_FS -e XFS_FS \
+            -e NTFS3_FS -e EXFAT_FS -e MSDOS_FS -e VFAT_FS \
+            -e SQUASHFS -e EROFS -e ISO9660_FS -e CIFS -e NFS_FS
+
+          # =========================================================================
+          # 6. IT ENTERPRISE & WORKSTATION ENGINE (WIREGUARD, RAID, KVM, DISPLAYPORT)
+          # =========================================================================
+          ./scripts/config --file out/.config \
+            -e WIREGUARD -e NET_KEY -e INET_AH -e INET_ESP -e IP_SCTP -e BPF_SYSCALL \
+            -e BLK_DEV_MD -e MD_RAID0 -e MD_RAID1 -e MD_RAID5 -e BLK_DEV_NBD \
+            -e DM_THIN_PROVISIONING -e DM_SNAPSHOT \
+            -e KVM -e VHOST_NET -e ZRAM -e ZSWAP \
+            -e DRM_EXYNOS -e ANALOGIX_DP -e USB_UAS -e SND_USB_AUDIO \
+            -e NAMESPACES -e UTS_NS -e IPC_NS -e USER_NS -e PID_NS -e NET_NS \
+            -e CGROUPS -e OVERLAY_FS -e PACKET_MMAP -e TUN -e TAP \
+            --set-str LOCALVERSION "-Laksanasoft-UltraWorkstation-v1.0"
+
+          # =========================================================================
+          # 7. STRIPPING TRACING & DEBUGGING FOR MAXIMUM SPACE EFFICIENCY
+          # =========================================================================
+          ./scripts/config --file out/.config \
+            -d FTRACE -d FUNCTION_TRACER -d STACK_TRACER -d KPROBES -d KGDB -d KALLSYMS_ALL
+
+          make O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- olddefconfig
+
+      - name: 🔨 Compile Monolithic Kernel & DTB
+        run: |
+          cd kernel
+          export CLANG_PATH="$(pwd)/../clang/bin"
+          make -j$(nproc --all) O=out ARCH=arm64 CC=$CLANG_PATH/clang CROSS_COMPILE=$CLANG_PATH/aarch64-linux-gnu- CROSS_COMPILE_ARM32=$CLANG_PATH/arm-linux-gnueabi- KCFLAGS="-Wno-error" Image dtbs
+
+          if [ -d "out/arch/arm64/boot/dts/exynos" ]; then
+            cat out/arch/arm64/boot/dts/exynos/*.dtb > out/arch/arm64/boot/dtb || true
+          fi
+          if [ -f "out/arch/arm64/boot/Image" ] && [ -f "out/arch/arm64/boot/dtb" ]; then
+            cat out/arch/arm64/boot/Image out/arch/arm64/boot/dtb > out/arch/arm64/boot/Image-dtb
+          fi
+
+      - name: 📦 Package Ultra-Monolithic Kernel Artifact
+        run: |
+          git clone https://github.com/osm0sis/AnyKernel3.git
+          if [ -f "kernel/out/arch/arm64/boot/Image-dtb" ]; then
+            cp kernel/out/arch/arm64/boot/Image-dtb AnyKernel3/
+          elif [ -f "kernel/out/arch/arm64/boot/Image" ]; then
+            cp kernel/out/arch/arm64/boot/Image AnyKernel3/
+          fi
+          if [ -f "kernel/out/arch/arm64/boot/dtb" ]; then
+            cp kernel/out/arch/arm64/boot/dtb AnyKernel3/
+          fi
+          cd AnyKernel3
+          sed -i 's/device.name1=maguro/device.name1=beyond2lte/' anykernel.sh
+          zip -r9 ../NetHunter-UltraWorkstation-Enterprise-beyond2lte.zip *
+
+      - name: 🚀 Upload Kernel Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NetHunter-UltraWorkstation-Enterprise-beyond2lte
+          path: NetHunter-UltraWorkstation-Enterprise-beyond2lte.zip
